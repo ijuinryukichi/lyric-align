@@ -1,0 +1,8 @@
+[
+ {"start": 0.50, "end": 3.20, "text": "あかねさす紫野ゆき",
+  "words": [{"start":0.50,"end":0.90,"word":"あか"},{"start":0.90,"end":1.30,"word":"ね"},{"start":1.30,"end":1.80,"word":"さす"},{"start":1.90,"end":2.40,"word":"紫"},{"start":2.40,"end":2.80,"word":"野"},{"start":2.85,"end":3.20,"word":"ゆき"}]},
+ {"start": 3.60, "end": 6.40, "text": "標野ゆき野守は見ずや",
+  "words": [{"start":3.60,"end":4.00,"word":"標"},{"start":4.00,"end":4.40,"word":"野"},{"start":4.40,"end":4.80,"word":"ゆき"},{"start":4.90,"end":5.30,"word":"野"},{"start":5.30,"end":5.70,"word":"守"},{"start":5.70,"end":6.10,"word":"は"},{"start":6.10,"end":6.40,"word":"見ずや"}]},
+ {"start": 7.00, "end": 9.80, "text": "君が袖振る",
+  "words": [{"start":7.00,"end":7.50,"word":"君"},{"start":7.50,"end":8.00,"word":"が"},{"start":8.00,"end":8.60,"word":"袖"},{"start":8.60,"end":9.80,"word":"振る"}]}
+]
