@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lyric-align"
+version = "0.1.0"
+description = "Place known lyrics on an audio timeline — CJK-first, built for sung vocals and rap."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "ijuinryukichi" }]
+keywords = ["lyrics", "alignment", "karaoke", "subtitle", "lrc", "ass", "japanese", "whisper", "forced-alignment"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Multimedia :: Sound/Audio :: Analysis",
+  "Natural Language :: Japanese",
+]
+dependencies = []
+
+[project.optional-dependencies]
+asr = ["faster-whisper>=1.0"]
+separate = ["demucs>=4.0"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+lyric-align = "lyric_align.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ijuinryukichi/lyric-align"
+Issues = "https://github.com/ijuinryukichi/lyric-align/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lyric_align"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
