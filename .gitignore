@@ -10,3 +10,5 @@ venv/
 *.wav
 *.mp3
 *.flac
+*.ogg
+demo_local/

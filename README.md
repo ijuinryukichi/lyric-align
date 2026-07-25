@@ -17,9 +17,12 @@ It is built for two things most aligners handle poorly:
 
 ## Install
 
+Not on PyPI yet — install from source:
+
 ```bash
-pip install lyric-align          # core (pure stdlib, no heavy deps)
-pip install lyric-align[asr]      # + faster-whisper, to transcribe audio
+pip install "git+https://github.com/ijuinryukichi/lyric-align"           # core (pure stdlib)
+pip install "lyric-align[asr] @ git+https://github.com/ijuinryukichi/lyric-align"        # + faster-whisper (transcribe)
+pip install "lyric-align[asr,separate] @ git+https://github.com/ijuinryukichi/lyric-align"  # + demucs (vocal split)
 ```
 
 ## Use
@@ -28,6 +31,9 @@ pip install lyric-align[asr]      # + faster-whisper, to transcribe audio
 # transcribe audio and align known lyrics → LRC
 lyric-align song.wav lyrics.txt -o out.lrc
 
+# full mix? split the vocal first — this matters a lot (see below)
+lyric-align song.wav lyrics.txt --separate -o out.lrc
+
 # already have Whisper segments? skip ASR
 lyric-align --segments segments.json lyrics.txt -f srt
 
@@ -35,9 +41,61 @@ lyric-align --segments segments.json lyrics.txt -f srt
 lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
 ```
 
-`lyrics.txt` is plain text, one lyric line per line. `segments.json` is a list
-of `{"start", "end", "text", "words": [{"start","end","word"}]}` — the shape any
+`lyrics.txt` is plain text, one lyric line per line. Blank lines, `# comments`
+and section markers (`[Verse 1]`, `[Hook]`) are skipped, so a pasted lyric sheet
+works as-is. `segments.json` is a list of
+`{"start", "end", "text", "words": [{"start","end","word"}]}` — the shape any
 Whisper flavor produces.
+
+### Try it in one minute
+
+Both the recording and the lyrics below are public domain, so this runs
+end-to-end with nothing of your own:
+
+```bash
+curl -L -o amazing_grace.mp3 \
+  "https://upload.wikimedia.org/wikipedia/commons/8/8f/Amazing_Grace_%28vocalist_with_guitar%29_-_Southern_Aire_-_United_States_Air_Force_Reserve_Band.mp3"
+# examples/amazing_grace.txt ships with this repo
+lyric-align amazing_grace.mp3 examples/amazing_grace.txt \
+  --language en --pairing 1 --no-vad -o amazing_grace.lrc
+```
+
+```
+segments: 12
+aligned 9/12 lines
+unmatched (omitted from output) — check these lines:
+  line 10: sim 0.00  I have already come
+  line 11: sim 0.00  Tis grace hath brought me safe thus far
+  line 12: sim 0.00  And grace will lead me home
+```
+
+```
+[00:06.60]Amazing grace, how sweet the sound
+[00:14.30]That saved a wretch like me
+[00:23.70]I once was lost, but now am found
+[00:34.52]Was blind, but now I see
+```
+
+Note `--no-vad`: this is a slow hymn, and the ASR's voice-activity filter
+mistakes sustained singing for silence. With the filter on, the same file yields
+**one** garbage segment for 130 seconds; with it off, twelve clean ones. Keep the
+filter for rap, drop it for anything sung slowly. (`--pairing 1` because this ASR
+already split one lyric line per segment.)
+
+### Feed it a vocal stem
+
+Alignment quality is dominated by this one choice. Same track, same settings,
+20 human-marked lines — only the input differs:
+
+| input | matched | mean \|err\| |
+|---|---|---|
+| Demucs vocal stem | **19/20** | **0.50 s** |
+| full mix | 8/20 | 1.59 s |
+
+On the full mix the ASR returned 11 segments for a 4-minute song instead of 41,
+merging whole sections, and everything past the first chorus went unmatched. Use
+`--separate` (or point the tool at a stem you already have). Separation is the
+slow step, so the stem is cached and reused.
 
 ### Library
 
@@ -90,6 +148,31 @@ Both `lyric-align` and `stable-ts` reach the ±0.5 s noise floor of the human
 ground truth — i.e. practically equivalent accuracy. WhisperX's batched VAD
 merges whole verses into single segments, which is fine for captions but loses
 line-level timing (and it can't take known text as input).
+
+A second track (3-minute Japanese rap, 33 human-marked lines, 1 s ground-truth
+granularity) reproduces this: **33/33 matched, median |err| 0.30 s**, 26/33
+within 0.5 s. Its mean of 0.94 s comes almost entirely from four outliers, all on
+the *same* line — see below.
+
+## Known limits
+
+- **Heavily repeated refrains can land on the wrong repetition.** A hook line
+  sung four times is four identical strings; if the ASR segments the repeats
+  unevenly, the forward scan can consume the neighbouring one. On the track
+  above, one 4×-repeated hook line produced errors of +6.4 s, −3.8 s, −4.5 s and
+  +5.7 s while every non-repeated line stayed within ~0.5 s. Check hook sections
+  by hand, or align verses and hooks as separate passes.
+- **Slow, sustained singing is much harder than rap** — hymns, ballads and
+  school songs stretch vowels until the ASR stops producing usable segments.
+  Reach for `--no-vad` first (see the one-minute example); dense, consonant-rich
+  delivery is the sweet spot. This is an ASR limit, not an anchoring one.
+- **A quiet or lo-fi recording can defeat the ASR entirely.** On a −33 dBFS
+  amateur recording of an unaccompanied Japanese art song, Whisper returned zero
+  segments, and returned `音楽` ("music") or a row of repeated single characters
+  once its silence thresholds were relaxed — it classified the singing as music
+  rather than speech. Loudness-normalizing to −16 LUFS did not help. When the
+  transcription is empty there is nothing to anchor to; check for segments before
+  blaming the alignment.
 
 The nearest match, [stable-ts](https://github.com/jianfch/stable-ts), was
 **archived in 2026-05**. `lyric-align` is a lighter (`ctranslate2`, not
