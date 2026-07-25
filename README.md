@@ -314,8 +314,7 @@ them. What actually differs is smaller: a script-aware threshold instead of a
 fixed 0.48, and locality instead of global optimality. And **their start
 refinement is a genuinely better idea than ours**, gated on two independent
 alignments agreeing; it needs a second aligner, which for us means torch, which
-is the dependency this project exists to avoid. The reasoning is in
-[the long write-up](docs/five-ways-to-not-fix-an-aligner.md).
+is the dependency this project exists to avoid.
 
 ### Coming from stable-ts?
 
@@ -449,11 +448,8 @@ above, "Through many dangers, toils and snares" was placed on the line
   Local accuracy does not compose in a greedy monotone scan, and that is why
   four unrelated interventions all land on roughly the same total.
 
-  The long version, with the diagnosis and the method notes, is
-  [Five ways I failed to fix a 3.6-second error](docs/five-ways-to-not-fix-an-aligner.md).
-
-  The fourth is worth naming separately because it is what the one other tool in
-  this niche does differently (see below). Taking each line's start from the word
+  The fourth is worth naming separately because it is what Vilm does differently
+  ([above](#against-vilm-the-one-other-maintained-tool-here)). Taking each line's start from the word
   its first character lands on — the sub-segment resolution a global character
   aligner buys — measured *worse on both tracks* (mean 0.50 → 0.79 s and
   0.94 → 1.26 s; ≤0.5 s 14/20 → 9/20 and 26/33 → 20/33). Placements are already
