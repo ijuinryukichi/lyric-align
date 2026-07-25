@@ -261,11 +261,17 @@ the lyrics are Japanese and the delivery is rap. That is the whole reason the
 matcher compares characters instead of words, and why the accuracy below is
 measured on sung Japanese rather than on read speech.
 
-The two tracks the numbers come from are
-[過ぎたるもの](https://youtu.be/cpXhuZK5rug) (20 lines, ±0.5 s ground truth) and
-[黒砂の誓い](https://youtu.be/b8mjRge4Ffk) (33 lines, 1 s granularity). Others
-from the same catalogue: [六の巷](https://youtu.be/OIonX0bZjmI),
+The three tracks the numbers come from are
+[過ぎたるもの](https://youtu.be/cpXhuZK5rug) (20 lines, ±0.5 s ground truth),
+[黒砂の誓い](https://youtu.be/b8mjRge4Ffk) (33 lines, 1 s granularity) and
+[誠の虎徹](https://youtu.be/StpsJytY6KQ) (38 lines, from the video's own beat grid).
+Others from the same catalogue: [六の巷](https://youtu.be/OIonX0bZjmI),
 [永遠の炎](https://youtu.be/lZIW59t9O-M) — [toryu.tokyo](https://toryu.tokyo).
+
+Three is not thoroughness, it is the minimum that stops a change from looking
+good. With two tracks every proposal traded one against the other and the call
+came down to which track was weighted more; the third exists to take that
+discretion away.
 
 Short lyric fragments from those tracks appear in the test fixtures. They are the
 author's own work and are **not** covered by this project's MIT license — see
@@ -294,8 +300,37 @@ granularity) reproduces this: **33/33 matched, median |err| 0.30 s**, 26/33
 within 0.5 s. Its mean of 0.94 s comes almost entirely from four outliers, all on
 the *same* line — see below.
 
-The ground truth on both tracks is marked per two-line pair, so these figures
-score the *first* line of each pair — 20 and 33 lines, not every line placed.
+A third (3.5-minute Japanese rap, 38 lines) is the mildest of the three:
+**36/38 matched, mean |err| 0.35 s, median 0.32 s**, 29/38 within 0.5 s, and a
+worst case of 0.81 s — no multi-second outlier anywhere, including on a hook line
+that repeats six times.
+
+<details>
+<summary>Its ground truth is built differently, and that is worth knowing before comparing the rows</summary>
+
+The first two tracks were marked by ear. The third is derived from the music
+video's own lyric timing — the video is a game-engine scene that displays each
+stanza on a fixed beat, so the beat numbers give times without anyone re-marking
+them. Nothing in that path touches this aligner, so it is not circular, but the
+lyrics land on a metronomic grid rather than on measured vocal onsets.
+
+How far the grid sits from the actual singing was measured rather than assumed,
+by comparing it against energy onsets in the separated vocal stem — a signal with
+no text matching in it:
+
+| | |
+|---|---|
+| grid − onset | mean **−0.05 s**, median −0.07 s (essentially unbiased) |
+| \|offset\| | median **0.15 s**, 90th percentile 0.40 s, max 0.51 s |
+
+So this track's ground truth resolves about as finely as the other two, and
+differences below ~0.2 s on it are not measurements. It still discriminates:
+sweeping `pairing` over 1 / 2 / 3 gives mean 2.82 s / **0.35 s** / 1.20 s.
+
+</details>
+
+The ground truth on all three tracks is marked per two-line pair, so these figures
+score the *first* line of each pair — 20, 33 and 38 lines, not every line placed.
 Second lines have a weaker but free check: each must start inside its pair's
 window. The shipped configuration passes it (19/19 and 29/33, the four misses
 being the repeated hook already described), so the tables are not hiding a second
@@ -477,13 +512,26 @@ above, "Through many dangers, toils and snares" was placed on the line
 
 ## Known limits
 
+The sweeps quoted below were run on the first two tracks, before the third had a
+ground truth. They have not been re-run on it, so read "both tracks" in them
+literally — it means those two, not all three.
+
 ### Heavily repeated refrains can land on the wrong repetition
 
 A hook line sung four times is four identical strings; if the ASR segments the
-repeats unevenly, the forward scan can consume the neighbouring one. On the track
-above, one 4×-repeated hook line produced errors of +6.4 s, −3.8 s, −4.5 s and
+repeats unevenly, the forward scan can consume the neighbouring one. On the second
+track, one 4×-repeated hook line produced errors of +6.4 s, −3.8 s, −4.5 s and
 +5.7 s while every non-repeated line stayed within ~0.5 s. **Check hook sections
 by hand, or align verses and hooks as separate passes.**
+
+Repetition alone does not cause this. The third track repeats *two* hook lines
+**six times each** — twelve of its thirty-eight lines are duplicates — and none of
+them breaks: the worst is 0.81 s, and the repeated lines are no worse than the
+rest of that track. What differs is the ASR: where the repeats are segmented
+evenly, the forward scan consumes them in order and the ambiguity never has to be
+resolved. So the failure needs repetition **and** uneven segmentation together,
+and you cannot predict it from the lyrics alone — check the hooks on a track where
+the numbers matter, rather than assuming either outcome.
 
 Two obvious fixes were implemented and measured. Both are worse than shipping the
 limitation, and the reason generalises: identical repetitions carry identical
