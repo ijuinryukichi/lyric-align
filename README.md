@@ -283,6 +283,40 @@ granularity) reproduces this: **33/33 matched, median |err| 0.30 s**, 26/33
 within 0.5 s. Its mean of 0.94 s comes almost entirely from four outliers, all on
 the *same* line — see below.
 
+### Against Vilm, the one other maintained tool here
+
+[Vilm Lyrics Aligner](https://github.com/banjuman/vilm-lyrics-aligner) solves the
+same problem for a different audience — live performance, Korean/English
+code-switching, SRT into DaVinci Resolve, with a GUI and a Resolve panel where
+this has a CLI. Same two tracks, from vocal stems, same ASR model size on both
+sides:
+
+| | 過ぎたるもの (no repeats) ||| 黒砂の誓い (4× repeated hook) |||
+|---|---|---|---|---|---|---|
+| | mean | ≤0.5 s | worst | mean | ≤0.5 s | worst |
+| **lyric-align** | 0.50 s | **14/20** | 3.58 s | **0.94 s** | **26/33** | **6.36 s** |
+| Vilm | 0.50 s | 10/20 | **2.06 s** | 1.46 s | 13/33 | 8.13 s |
+
+Without repeats the means are identical to three decimals and we each take one
+column: **their tail is 1.5 s shorter than ours**, our body has four more lines
+inside half a second. With a four-times-repeated hook we are ahead two to one.
+
+That second gap is the matcher, not the pipeline. Running *our* ASR output
+through *their* matching layer scores 14/33 inside 0.5 s against our 26/33
+(mean 1.55 s against 0.94 s) — their matcher is a single global Needleman-Wunsch
+over the whole song's characters, and identical repetitions carry identical
+similarity, which is the same result [we measured for a global
+matcher](#known-limits) before finding theirs.
+
+Two things this settles. **Character-level matching is not a differentiator** —
+Vilm compares characters too, and also reports weak matches rather than forcing
+them. What actually differs is smaller: a script-aware threshold instead of a
+fixed 0.48, and locality instead of global optimality. And **their start
+refinement is a genuinely better idea than ours**, gated on two independent
+alignments agreeing; it needs a second aligner, which for us means torch, which
+is the dependency this project exists to avoid. The reasoning is in
+[the long write-up](docs/five-ways-to-not-fix-an-aligner.md).
+
 ### Coming from stable-ts?
 
 [stable-ts](https://github.com/jianfch/stable-ts) was archived on 2026-05-30
@@ -415,16 +449,18 @@ above, "Through many dangers, toils and snares" was placed on the line
   Local accuracy does not compose in a greedy monotone scan, and that is why
   four unrelated interventions all land on roughly the same total.
 
-  The fourth is worth naming separately because it is what the one comparable
-  tool does differently. Taking each line's start from the word its first
-  character lands on — the sub-segment resolution a global character aligner
-  buys — measured *worse on both tracks* (mean 0.50 → 0.79 s and 0.94 → 1.26 s;
-  ≤0.5 s 14/20 → 9/20 and 26/33 → 20/33). Placements are already late (signed
-  mean +0.46 s and +0.21 s), and refining into the segment can only add
-  lateness. A sung phrase begins at its breath and attack, before the first word
-  the ASR is willing to timestamp, so the segment boundary is the better
-  estimate of onset — and the same thing that buys a global aligner a shorter
-  tail costs it the body.
+  The long version, with the diagnosis and the method notes, is
+  [Five ways I failed to fix a 3.6-second error](docs/five-ways-to-not-fix-an-aligner.md).
+
+  The fourth is worth naming separately because it is what the one other tool in
+  this niche does differently (see below). Taking each line's start from the word
+  its first character lands on — the sub-segment resolution a global character
+  aligner buys — measured *worse on both tracks* (mean 0.50 → 0.79 s and
+  0.94 → 1.26 s; ≤0.5 s 14/20 → 9/20 and 26/33 → 20/33). Placements are already
+  late (signed mean +0.46 s and +0.21 s), and refining into the segment can only
+  add lateness. A sung phrase begins at its breath and attack, before the first
+  word the ASR is willing to timestamp, so the segment boundary is the better
+  estimate of onset.
 - **Slow, sustained singing is much harder than rap** — hymns, ballads and
   school songs stretch vowels until the ASR stops producing usable segments.
   Reach for `--no-vad` first (see the one-minute example); dense, consonant-rich
