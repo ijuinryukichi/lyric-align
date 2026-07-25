@@ -181,8 +181,8 @@ aligned 12/12 lines
 Note `--no-vad`: this is a slow hymn, and the ASR's voice-activity filter
 mistakes sustained singing for silence. With the filter on, the same file yields
 **one** garbage segment for 130 seconds; with it off, twelve clean ones. Keep the
-filter for rap, drop it for anything sung slowly. (`--pairing 1` because this ASR
-already split one lyric line per segment.)
+filter for rap, drop it for anything sung slowly. (The `--pairing 1` is what
+`auto` picks here anyway — this ASR already split one lyric line per segment.)
 
 Drop `--no-vad` and you can watch the honest-gap contract hold: every line is
 reported unmatched, nothing is written, and the cause is named.
@@ -214,7 +214,7 @@ slow step, so the stem is cached and reused.
 from lyric_align import align, Segment
 
 segments = [Segment.from_dict(d) for d in whisper_output]
-aligned = align(segments, lyric_lines, pairing=2, karaoke=True)
+aligned = align(segments, lyric_lines, karaoke=True)  # pairing="auto"
 for a in aligned:
     print(a.start, a.matched, a.line)
 ```
@@ -283,6 +283,49 @@ A second track (3-minute Japanese rap, 33 human-marked lines, 1 s ground-truth
 granularity) reproduces this: **33/33 matched, median |err| 0.30 s**, 26/33
 within 0.5 s. Its mean of 0.94 s comes almost entirely from four outliers, all on
 the *same* line — see below.
+
+### A bigger ASR model is a trap unless the pairing follows
+
+Lines are matched in stanza units, and `pairing` says how many lyric lines make
+one unit. That is not a property of the song — it is a property of **the ASR's
+segmentation**, and models differ. On the same four-minute track:
+
+| model | segments | mean segment | pairing | mean \|err\| | ≤0.5 s | worst | lines placed |
+|---|---|---|---|---|---|---|---|
+| `medium` | 41 | 4.73 s | 2 | 0.50 s | 14/20 | 3.58 s | **74/76** |
+| `large-v3` | 64 | 2.78 s | **1** | **0.31 s** | **15/20** | **0.76 s** | 49/76 |
+| `large-v3` | 64 | 2.78 s | 2 | 1.13 s | 10/20 | 3.70 s | 68/76 |
+
+`large-v3` transcribes visibly better, and with the pairing it deserves it
+**removes the 3.6 s outlier entirely** — worst case 3.58 s → 0.76 s, mean down
+39 %. Left at a pairing tuned for `medium`, the same upgrade is *worse than not
+upgrading*, because a two-line unit now straddles a segment boundary.
+
+**Read the last column before switching.** At pairing 1 there are only 64
+segments for 76 lines, so a quarter of them cannot place at all — that row is
+more accurate *and* much less complete. Both `large-v3` rows match the same 18
+of the 20 measured lines; the extra lines pairing 2 places are ones the ground
+truth cannot check, and that configuration also produces six measurable
+outliers against pairing 1's none. Which trade you want depends on whether you
+are hand-correcting afterwards. `medium` remains the default because 74/76 with
+one bad line is the better starting point for most people.
+
+So the default is `--pairing auto`, which reads lines-per-segment off the ASR
+output. On every case measured it matches or beats the old fixed 2:
+
+| | lines / segments | auto picks | vs. fixed 2 |
+|---|---|---|---|
+| 過ぎたるもの, `medium` | 76 / 41 | 2 | identical |
+| 過ぎたるもの, `large-v3` | 76 / 64 | **1** | 0.50 s → **0.31 s** |
+| 黒砂, `medium` | 80 / 46 | 2 | identical |
+| 黒砂, `large-v3` | 80 / 46 | 2 | identical |
+| 過ぎたるもの, full mix (ASR collapsed) | 76 / 11 | 3 (capped) | no worse |
+
+It does **not** rescue the repeated-hook track: `large-v3` is behind `medium`
+there at every pairing, because four identical hook lines carry no information
+about which repetition they are, whatever transcribes them. Better ASR fixes
+outliers caused by *garbled text*; it cannot fix outliers caused by *identical*
+text.
 
 ### Against Vilm, the one other maintained tool here
 

@@ -71,3 +71,36 @@ def test_char_timings_are_strictly_positive_and_ordered():
     ct = char_timings("島の左近と佐和山の城なり", words)
     assert all(c["end"] > c["start"] for c in ct)
     assert all(b["start"] >= a["end"] for a, b in zip(ct, ct[1:]))
+
+
+def test_auto_pairing_reads_the_asr_segmentation():
+    # pairing is a property of the ASR's segmentation, not of the song: it is
+    # how many lyric lines the model merged into one segment.
+    from lyric_align import auto_pairing
+    segs = [Segment(float(i), i + 1.0, "x") for i in range(10)]
+    assert auto_pairing(["l"] * 20, segs) == 2   # medium-like: ~2 lines/segment
+    assert auto_pairing(["l"] * 11, segs) == 1   # large-v3-like: ~1 line/segment
+
+
+def test_auto_pairing_is_capped_and_safe_when_the_asr_collapses():
+    # A full mix makes Whisper merge whole verses; the answer there is to
+    # separate the vocal, not to widen the unit, so the estimate stops at 3.
+    from lyric_align.anchor import AUTO_PAIRING_MAX, auto_pairing
+    segs = [Segment(0.0, 200.0, "x")] * 3
+    assert auto_pairing(["l"] * 76, segs) == AUTO_PAIRING_MAX
+    assert auto_pairing(["l"] * 10, []) == 1     # no segments: never divide by zero
+
+
+def test_align_defaults_to_auto_pairing():
+    from lyric_align import auto_pairing
+    segs = load()
+    lyrics = ["あかねさす紫野ゆき", "標野ゆき野守は見ずや", "君が袖振る"]
+    chosen = auto_pairing(lyrics, segs)
+    assert [a.to_dict() for a in align(segs, lyrics)] == \
+           [a.to_dict() for a in align(segs, lyrics, pairing=chosen)]
+
+
+def test_align_rejects_an_unknown_pairing_keyword():
+    import pytest
+    with pytest.raises(ValueError, match="auto"):
+        align(load(), ["あかねさす紫野ゆき"], pairing="whatever")

@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .anchor import align, interpolate_gaps
+from .anchor import align, auto_pairing, interpolate_gaps
 from .formats import EXTENSIONS, FORMATTERS, NEEDS_SYLLABLES, from_aud
 from .model import Segment
 from .normalize import CJK_THRESHOLD, LATIN_THRESHOLD, default_threshold
@@ -116,9 +116,12 @@ def build_parser() -> argparse.ArgumentParser:
                           "get few or no segments, try this first")
 
     al = p.add_argument_group("alignment")
-    al.add_argument("--pairing", type=int, default=2,
-                    help="lyric lines per stanza unit matched to one segment "
-                         "(default: %(default)s; use 1 if the ASR splits per line)")
+    al.add_argument("--pairing", default="auto", metavar="N|auto",
+                    help="lyric lines per stanza unit matched to one segment. "
+                         "Default 'auto' reads it off the ASR's own "
+                         "segmentation, because the right value depends on the "
+                         "model: medium merges ~2 sung lines per segment, "
+                         "large-v3 splits far finer. Pass an int to override")
     al.add_argument("--interpolate", action="store_true",
                     help="give unmatched lines guessed timestamps between their "
                          "neighbours (they stay flagged as unmatched)")
@@ -239,7 +242,19 @@ def main(argv=None) -> int:
         log(f"match threshold: {threshold} "
             f"({'CJK' if threshold == CJK_THRESHOLD else 'alphabetic'} script)")
 
-    aligned = align(segments, lyrics, pairing=args.pairing,
+    # Resolve here rather than inside align(), so the log says what was chosen.
+    if str(args.pairing).lower() == "auto":
+        pairing = auto_pairing(lyrics, segments)
+        log(f"pairing: {pairing} (auto — {len(lyrics)} lines / "
+            f"{len(segments)} segments)")
+    else:
+        try:
+            pairing = int(args.pairing)
+        except ValueError:
+            raise SystemExit(f"--pairing expects an integer or 'auto', "
+                             f"got {args.pairing!r}") from None
+
+    aligned = align(segments, lyrics, pairing=pairing,
                     threshold=threshold, window=args.window,
                     karaoke=karaoke)
     if args.interpolate:

@@ -52,6 +52,33 @@ from .model import AlignedLine, Segment
 from .normalize import default_threshold, similarity
 
 
+AUTO_PAIRING_MAX = 3
+
+
+def auto_pairing(lyrics: list[str], segments: list[Segment]) -> int:
+    """How many lyric lines the ASR appears to have merged into one segment.
+
+    `pairing` is not a property of the song, it is a property of the *ASR's*
+    segmentation, and different models segment differently. faster-whisper
+    `medium` merges about two sung lines per segment on Japanese rap, which is
+    where the old fixed default of 2 came from — but `large-v3` splits much
+    finer (4.7 s average segment down to 2.8 s, 41 segments up to 64 on the same
+    four-minute track), so a two-line unit straddles a segment boundary and the
+    match degrades. Measured on that track: `large-v3` at the old default is
+    *worse* than `medium` (mean 0.50 s -> 1.13 s), and better than it once the
+    pairing follows (0.31 s, worst case 3.58 s -> 0.76 s). Upgrading the model
+    alone is a trap.
+
+    Lines per segment is exactly what pairing means, so it is also the estimate.
+    Capped at 3: beyond that the ASR has stopped producing line-like segments
+    (a full mix, where whole verses collapse into one), and the answer there is
+    to separate the vocal, not to widen the unit — which the CLI already says.
+    """
+    if not segments:
+        return 1
+    return max(1, min(AUTO_PAIRING_MAX, round(len(lyrics) / len(segments))))
+
+
 def _stanzas(lines: list[str], pairing: int) -> list[list[str]]:
     """Group lyric lines into stanza units of size `pairing` (1 = per line)."""
     if pairing < 1:
@@ -80,7 +107,7 @@ def align(
     segments: list[Segment],
     lyrics: list[str],
     *,
-    pairing: int = 2,
+    pairing: int | str = "auto",
     threshold: float | None = None,
     window: int = 4,
     karaoke: bool = False,
@@ -88,9 +115,10 @@ def align(
     """Align known `lyrics` lines onto ASR `segments`.
 
     Args:
-        pairing: lyric lines per stanza unit matched to one segment. Whisper
-            merges ~2 sung lines per segment, so 2 is a good default for
-            Japanese rap; use 1 if your ASR already splits per line.
+        pairing: lyric lines per stanza unit matched to one segment, or "auto"
+            (the default) to read it off the ASR's own segmentation — see
+            `auto_pairing`, which explains why a fixed value is tied to one
+            model. Pass an int to override.
         threshold: minimum character similarity to accept a match. Defaults to a
             script-aware value (see `normalize.default_threshold`).
         window: how many segments ahead to search from the current position.
@@ -101,6 +129,10 @@ def align(
     """
     if threshold is None:
         threshold = default_threshold(lyrics)
+    if isinstance(pairing, str):
+        if pairing != "auto":
+            raise ValueError(f"pairing must be an int or 'auto', got {pairing!r}")
+        pairing = auto_pairing(lyrics, segments)
 
     units = _stanzas(lyrics, pairing)
     results: list[AlignedLine] = []
