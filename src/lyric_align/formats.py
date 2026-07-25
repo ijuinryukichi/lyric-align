@@ -132,6 +132,44 @@ def to_aud(aligned: list[AlignedLine]) -> str:
     return "\n".join(rows) + "\n"
 
 
+def from_aud(text: str) -> list[AlignedLine]:
+    """Read an Audacity label track back in — the other half of the round trip.
+
+    ``to_aud`` writes the timings out so a human can drag the wrong ones over the
+    waveform; this reads the corrected file, so the fix can leave as LRC, TTML or
+    anything else. No audio and no ASR: the label file already holds both the
+    text and the times.
+
+    Tolerates what Audacity actually writes: point labels (start == end, which a
+    click rather than a drag produces) and the ``\\t<low>\\t<high>`` continuation
+    row that a frequency-range label adds under its own text row.
+
+    Lines arrive with ``matched=True`` and ``score=1.0``. That is not a
+    similarity — nothing was matched here. It records that a human, not the
+    aligner, is the authority for these timings.
+    """
+    out: list[AlignedLine] = []
+    for n, raw in enumerate(text.splitlines(), 1):
+        if not raw.strip():
+            continue
+        if raw.startswith("\\"):
+            continue                      # frequency range for the label above
+        parts = raw.split("\t")
+        if len(parts) < 3:
+            raise ValueError(
+                f"line {n}: expected 'start<TAB>end<TAB>text', got {raw!r}")
+        try:
+            start, end = float(parts[0]), float(parts[1])
+        except ValueError:
+            raise ValueError(
+                f"line {n}: first two columns must be times, got {raw!r}") from None
+        label = "\t".join(parts[2:]).strip()
+        if not label:
+            continue                      # an unnamed marker is not a lyric line
+        out.append(AlignedLine(label, start, max(end, start), 1.0, True, None))
+    return out
+
+
 def _ttml_ts(t: float) -> str:
     h = int(t // 3600)
     m = int(t % 3600 // 60)
