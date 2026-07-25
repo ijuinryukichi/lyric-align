@@ -267,14 +267,15 @@ domain, so anyone can reproduce it end to end.
 Measured against 20 human-marked lyric lines of a 4-minute Japanese rap track
 (±0.5 s ground-truth precision), aligning from a Demucs-separated vocal stem:
 
-| method | matched | mean \|err\| | ≤1.0 s |
-|---|---|---|---|
-| **lyric-align** (faster-whisper medium + fuzzy anchor) | 19/20 | 0.50 s | 18/20 |
-| stable-ts `align()` (known text, now archived) | 20/20 | 0.42 s | 19/20 |
-| WhisperX ja (transcribe + wav2vec2) | 4/20 | 47 s | 1/20 |
+| method | matched | mean \|err\| | median | ≤0.5 s | ≤1.0 s |
+|---|---|---|---|---|---|
+| **lyric-align** (faster-whisper medium + fuzzy anchor) | 19/20 | 0.50 s | **0.36 s** | **14/20** | 18/20 |
+| stable-ts `align()` (known text, now archived) | 20/20 | **0.43 s** | 0.43 s | 12/20 | **19/20** |
+| WhisperX ja (transcribe + wav2vec2) | 4/20 | 47 s | 30.7 s | 0/20 | 1/20 |
 
-Both `lyric-align` and `stable-ts` reach the ±0.5 s noise floor of the human
-ground truth — i.e. practically equivalent accuracy. WhisperX's batched VAD
+`lyric-align` and `stable-ts` are practically equivalent: they split the columns,
+and every gap between them is smaller than the ±0.5 s the ground truth was
+eyeballed to. WhisperX's batched VAD
 merges whole verses into single segments, which is fine for captions but loses
 line-level timing (and it can't take known text as input).
 
@@ -318,12 +319,28 @@ is the dependency this project exists to avoid.
 
 ### Coming from stable-ts?
 
-[stable-ts](https://github.com/jianfch/stable-ts) was archived on 2026-05-30
-(last PyPI release 2025-08). It did this job well, and this is not a claim to
-have beaten it — head to head above, its `align()` is slightly *ahead*: 20/20
-lines at 0.42 s mean against 19/20 at 0.50 s, with both sitting on the ±0.5 s
-noise floor of the human ground truth. What differs is everything around the
-accuracy:
+[stable-ts](https://github.com/jianfch/stable-ts) was archived on 2026-05-30, its
+last commit being "Add note about paused development". The version `pip` installs
+is older than that: 2.19.1, from **2025-08**, which predates its own final
+alignment work (committed 2025-10, never released).
+
+It did this job well, and this is not a claim to have beaten it. It is also not
+a claim to have lost — the head-to-head splits, and every gap in it is smaller
+than the ±0.5 s the ground truth was marked to:
+
+| | matched | mean | median | ≤0.5 s | ≤1.0 s | first line |
+|---|---|---|---|---|---|---|
+| **lyric-align** | 19/20 | 0.50 s | **0.36 s** | **14/20** | 18/20 | **+0.28 s** |
+| stable-ts `align()` | 20/20 | **0.43 s** | 0.43 s | 12/20 | **19/20** | −1.64 s |
+
+They take the mean and the count; we take the median and the ≤0.5 s bucket. On a
+ground truth eyeballed to half a second, a 0.07 s difference is not a result in
+either direction.
+
+The count is a contract, not accuracy. A forced aligner always emits, so
+stable-ts places all 20 — and the twentieth is that first line, 1.64 s early,
+sitting in the intro. `lyric-align` places 19 and says so about the one where the
+ASR collapsed. What actually differs is everything around the accuracy:
 
 | | stable-ts `align()` | lyric-align |
 |---|---|---|
