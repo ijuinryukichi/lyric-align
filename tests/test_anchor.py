@@ -62,3 +62,12 @@ def test_char_timings_skips_spaces():
     words = [Word(0.0, 1.0, "ab"), Word(1.0, 2.0, "cd")]
     ct = char_timings("a b", words)
     assert [c["char"] for c in ct] == ["a", "b"]
+
+
+def test_char_timings_are_strictly_positive_and_ordered():
+    # Many characters over a short span is where proportional interpolation plus
+    # millisecond rounding used to collapse a syllable to zero length.
+    words = [Word(10.0, 10.06, "ab"), Word(10.06, 10.12, "cd")]
+    ct = char_timings("島の左近と佐和山の城なり", words)
+    assert all(c["end"] > c["start"] for c in ct)
+    assert all(b["start"] >= a["end"] for a, b in zip(ct, ct[1:]))
