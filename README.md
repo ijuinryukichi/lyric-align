@@ -17,12 +17,26 @@ It is built for two things most aligners handle poorly:
 
 ## Install
 
-Not on PyPI yet — install from source:
+Not on PyPI yet — install from the repository.
+
+**As a command-line tool** (recommended — puts `lyric-align` on your PATH, in its
+own isolated environment):
 
 ```bash
-pip install "git+https://github.com/ijuinryukichi/lyric-align"           # core (pure stdlib)
-pip install "lyric-align[asr] @ git+https://github.com/ijuinryukichi/lyric-align"        # + faster-whisper (transcribe)
-pip install "lyric-align[asr,separate] @ git+https://github.com/ijuinryukichi/lyric-align"  # + demucs (vocal split)
+uv tool install "lyric-align[asr] @ git+https://github.com/ijuinryukichi/lyric-align"
+# or: pipx install "lyric-align[asr] @ git+https://github.com/ijuinryukichi/lyric-align"
+
+lyric-align --version
+```
+
+Add `separate` to the extras (`lyric-align[asr,separate]`) if you want Demucs
+vocal splitting; it pulls in torch, so leave it out until you need it.
+
+**As a library**, into your own environment:
+
+```bash
+pip install "git+https://github.com/ijuinryukichi/lyric-align"        # core only, pure stdlib
+pip install "lyric-align[asr] @ git+https://github.com/ijuinryukichi/lyric-align"
 ```
 
 ## Use
