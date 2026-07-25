@@ -5,17 +5,27 @@ source) and ASR segments with word timings, we place each lyric line/stanza on
 the timeline by character-level fuzzy matching, moving forward monotonically so
 repeated lines (choruses) consume segments in order.
 
+The forward `window` is load-bearing, not just an optimisation: it keeps a line
+from reaching a distant segment that happens to clear the threshold. Replacing
+this scan with a globally optimal monotone assignment (maximise total similarity,
+optionally minus a diagonal-drift penalty) was tried and measured worse — it
+places every line, but repeated hooks carry no distinguishing similarity, so the
+extra placements land on the wrong repetition: mean error 0.94 s -> 1.14-1.61 s,
+worst 6.4 s -> 10.6 s on a track with a 4x-repeated hook. Locality beats global
+optimality here because similarity alone cannot tell repetitions apart.
+
 Design philosophy: when a line cannot be confidently matched, we mark it
 unmatched rather than inventing a timestamp. Forced aligners always emit an
 answer and thus fail *silently* (e.g. drifting into the intro); we prefer honest
-gaps that a human — or a later interpolation pass — can fix.
+gaps that a human — or a later interpolation pass — can fix. The same reasoning
+rejects the global matcher above: a visible gap beats a confident wrong time.
 """
 from __future__ import annotations
 
 from .breath import split_words_by_breath
 from .charmap import char_timings
 from .model import AlignedLine, Segment
-from .normalize import similarity
+from .normalize import default_threshold, similarity
 
 
 def _stanzas(lines: list[str], pairing: int) -> list[list[str]]:
@@ -30,7 +40,7 @@ def align(
     lyrics: list[str],
     *,
     pairing: int = 2,
-    threshold: float = 0.25,
+    threshold: float | None = None,
     window: int = 4,
     karaoke: bool = False,
 ) -> list[AlignedLine]:
@@ -40,13 +50,17 @@ def align(
         pairing: lyric lines per stanza unit matched to one segment. Whisper
             merges ~2 sung lines per segment, so 2 is a good default for
             Japanese rap; use 1 if your ASR already splits per line.
-        threshold: minimum character similarity to accept a match.
+        threshold: minimum character similarity to accept a match. Defaults to a
+            script-aware value (see `normalize.default_threshold`).
         window: how many segments ahead to search from the current position.
         karaoke: if True, compute per-character timings (needs word timings).
 
     Returns one AlignedLine per input lyric line (stanzas are expanded back to
     lines via breath splitting).
     """
+    if threshold is None:
+        threshold = default_threshold(lyrics)
+
     units = _stanzas(lyrics, pairing)
     results: list[AlignedLine] = []
     idx = 0
