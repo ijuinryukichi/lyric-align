@@ -200,6 +200,21 @@ above, "Through many dangers, toils and snares" was placed on the line
   above, one 4×-repeated hook line produced errors of +6.4 s, −3.8 s, −4.5 s and
   +5.7 s while every non-repeated line stayed within ~0.5 s. Check hook sections
   by hand, or align verses and hooks as separate passes.
+
+  Replacing the forward scan with a globally optimal monotone assignment does
+  *not* fix this, and measured worse. Identical repetitions carry identical
+  similarity, so the global optimum just places more lines — and the extra ones
+  land on the wrong cycle:
+
+  | matcher | lines placed | mean \|err\| | within 0.5 s | worst |
+  |---|---|---|---|---|
+  | forward scan (shipped) | 70/80 | **0.94 s** | **26/33** | **6.4 s** |
+  | global optimum | 80/80 | 1.61 s | 22/33 | 10.6 s |
+  | global optimum + diagonal-drift penalty | 80/80 | 1.14 s | 25/33 | 10.6 s |
+
+  Telling repetitions apart needs a timing prior, not a better search over
+  similarity. Meanwhile the forward window is doing real work: it stops a line
+  from reaching a distant segment that happens to clear the threshold.
 - **Slow, sustained singing is much harder than rap** — hymns, ballads and
   school songs stretch vowels until the ASR stops producing usable segments.
   Reach for `--no-vad` first (see the one-minute example); dense, consonant-rich
