@@ -274,6 +274,36 @@ above, "Through many dangers, toils and snares" was placed on the line
   Telling repetitions apart needs a timing prior, not a better search over
   similarity. Meanwhile the forward window is doing real work: it stops a line
   from reaching a distant segment that happens to clear the threshold.
+
+  A timing prior was then tried, and also measured worse. Scoring candidates by
+  `similarity − λ·|start − predicted|`, where `predicted` is the last placement
+  plus the running median gap:
+
+  | λ | lines placed | mean \|err\| | within 0.5 s | worst |
+  |---|---|---|---|---|
+  | 0 (shipped) | 33/33 | **0.94 s** | **26/33** | **6.4 s** |
+  | 0.1 | 33/33 | 1.67 s | 21/33 | 10.6 s |
+  | 0.3 | 33/33 | 2.05 s | 19/33 | 10.6 s |
+  | 0.5 | 8/33 | — | 7/33 | — |
+
+  The prior predicts from the aligner's own previous placements, so it cannot
+  correct a bad one — it anchors on it and drags the next lines along, which is
+  why the worst case grows rather than shrinks. Songs also do not run at one
+  pace: a median gap mispredicts hardest across a section boundary, which is
+  exactly where repeated hooks sit.
+
+  Restricting the prior to breaking near-ties (candidates within ε similarity,
+  never overturning a clear winner) is the only variant that does not hurt, and
+  it does not clearly help either: ε=0.02 moved one line into the ≤0.5 s bucket
+  (26→27) and the mean by 0.07 s; ε=0.05 left the buckets alone and cut the
+  worst case to 5.7 s; ε=0.10 collapsed back to the harmful regime. The second
+  track was unchanged at every ε. A 0.07 s shift is below the 1 s resolution of
+  that track's ground truth, so there is no measurement here to ship on — and
+  the useful ε sits directly beside a harmful one. Left out.
+
+  A prior that would actually work has to come from a signal independent of the
+  aligner's output — audio-side section detection, say — which is a different
+  tool with a much heavier dependency than a stdlib core.
 - **Slow, sustained singing is much harder than rap** — hymns, ballads and
   school songs stretch vowels until the ASR stops producing usable segments.
   Reach for `--no-vad` first (see the one-minute example); dense, consonant-rich
