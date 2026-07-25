@@ -48,108 +48,7 @@ pip install "lyric-align[asr]"     # + faster-whisper, to transcribe audio
 If you already have segments with word timings from somewhere else, the core
 install is enough: feed them in with `--segments` and nothing gets downloaded.
 
-## Use
-
-```bash
-# transcribe audio and align known lyrics → LRC
-lyric-align song.wav lyrics.txt -o out.lrc
-
-# full mix? split the vocal first — this matters a lot (see below)
-lyric-align song.wav lyrics.txt --separate -o out.lrc
-
-# already have Whisper segments? skip ASR
-lyric-align --segments segments.json lyrics.txt -f srt
-
-# per-character karaoke ASS (\k tags)
-lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
-```
-
-`lyrics.txt` is plain text, one lyric line per line. Blank lines, `# comments`
-and section markers (`[Verse 1]`, `[Hook]`) are skipped, so a pasted lyric sheet
-works as-is. `segments.json` is a list of
-`{"start", "end", "text", "words": [{"start","end","word"}]}` — the shape any
-Whisper flavor produces.
-
-## Output: pick the format your next tool eats
-
-`-f all -o out` writes every format at once.
-
-| format | what it is | where it goes next |
-|---|---|---|
-| `lrc` | line-timed lyrics | music players; contributing to [LRCLIB](https://lrclib.net) |
-| `elrc` | LRC A2 — same file, inline per-syllable timestamps | word-by-word players (AIMP, QQ/NetEase/Kugou, Chronograph), karaoke editors |
-| `srt` | universal subtitles | `ffmpeg`, video editors, YouTube captions |
-| `vtt` | WebVTT | HTML5 `<track>`, web players |
-| `ass` | styling + `\k` karaoke sweeps | Aegisub, `ffmpeg` burn-in |
-| `ttml` | per-syllable rich lyrics | Apple-style / AMLL-ecosystem players |
-| `aud` | Audacity label track (`start⇥end⇥text`) | **fixing the timings by hand**, then `--from-labels` back into any format; also plain TSV |
-| `json` | everything, including scores and unmatched lines | your own code |
-
-Per-syllable formats split by script: alphabetic text is grouped into words
-(`<00:06.60>Amazing <00:08.82>grace`), CJK stays one unit per character
-(`<00:21.78>治<00:21.94>部`), which is how per-character karaoke formats treat
-Japanese and Chinese. The separator between units is taken from the source line
-rather than inferred, so a Japanese line that carries a phrasing space
-(`硫黄が満ちる 道の奥`) rebuilds character-for-character instead of gaining a
-space between every character.
-
-`lrc`/`elrc` cannot express an end time — the last syllable of a line has no
-close. Every other format carries the end times this aligner computes.
-
-The `ttml` output is checked against the AMLL reference parser
-([`@applemusic-like-lyrics/ttml`](https://github.com/amll-dev/applemusic-like-lyrics)),
-not just against the XML schema: lines, per-unit text and millisecond timings
-survive a real parse unchanged, in both scripts. It declares a single
-`ttm:agent` because the spec wants one per line, and carries `xml:lang` from
-`--language`. The title/artist/album an AMLL *database submission* also wants
-are deliberately absent — this tool is handed audio and lyrics and nothing else,
-so it does not invent them.
-
-### Recipes
-
-```bash
-# burn subtitles into a video
-ffmpeg -i video.mp4 -vf "ass=out.ass" -c:a copy out.mp4
-
-# karaoke sweep instead of plain lines
-lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
-
-# fix a mistimed line by hand — the correction loop, in three steps
-lyric-align song.wav lyrics.txt -f aud -o out.labels.txt   # 1. export labels
-#   2. Audacity: File > Import > Labels, drag the wrong line over the waveform,
-#      then File > Export > Export Labels
-lyric-align --from-labels out.labels.txt -f lrc -o final.lrc   # 3. back to LRC
-
-# web player
-lyric-align song.wav lyrics.txt -f vtt -o out.vtt
-
-# a file shaped for an AMLL TTML DB submission
-lyric-align song.wav lyrics.txt -f ttml -o out.ttml \
-  --meta musicName="Song" --meta artists="Artist" --meta album="Album" \
-  --meta ncmMusicId=1234567
-```
-
-The [AMLL TTML DB](https://github.com/amll-dev/amll-ttml-db) is the largest open
-collection of word-by-word lyric files — tens of thousands of them, timed by
-hand. Its checker requires `musicName`, `artists`, `album` and at least one
-platform id (`ncmMusicId` / `appleMusicId` / `spotifyId` / `qqMusicId`), none of
-which can be inferred from audio and lyrics, so `--meta` is how you supply them.
-Everything else was already in the right shape: one `<span>` per CJK character,
-spaces as text nodes *between* spans (the form their spec calls most compliant),
-and every child timestamp contained by its parent.
-
-Checked, not assumed — the output parses with the AMLL reference parser
-(`@applemusic-like-lyrics/ttml`) and clears every rule in the database's own
-checker (`scripts/lyric_checker_bot/src/validator.rs`): 70 lines, 623 syllables,
-metadata read back intact. Without `--meta` the same file fails on exactly the
-four metadata rules, which is the point of the flag.
-
-Formats deliberately left out: UltraStar `.txt` and CDG need sung **pitch**, not
-just timing — [UltraSinger](https://github.com/rakuri255/UltraSinger) and
-[karaoke-gen](https://github.com/nomadkaraoke/karaoke-gen) cover that. Apple
-Music and Spotify do not accept user-supplied lyric files at all.
-
-### Try it in one minute
+## Try it in one minute
 
 Both the recording and the lyrics below are public domain, so this runs
 end-to-end with nothing of your own:
@@ -192,6 +91,117 @@ only 0/12 lines matched from 1 segments — try --no-vad (the voice-activity
 filter silences slow singing), or --separate (a full mix hides the vocal
 from the ASR)
 ```
+
+## Use
+
+```bash
+# transcribe audio and align known lyrics → LRC
+lyric-align song.wav lyrics.txt -o out.lrc
+
+# full mix? split the vocal first — this matters a lot (see below)
+lyric-align song.wav lyrics.txt --separate -o out.lrc
+
+# already have Whisper segments? skip ASR
+lyric-align --segments segments.json lyrics.txt -f srt
+
+# per-character karaoke ASS (\k tags)
+lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
+```
+
+`lyrics.txt` is plain text, one lyric line per line. Blank lines, `# comments`
+and section markers (`[Verse 1]`, `[Hook]`) are skipped, so a pasted lyric sheet
+works as-is. `segments.json` is a list of
+`{"start", "end", "text", "words": [{"start","end","word"}]}` — the shape any
+Whisper flavor produces.
+
+## Output: pick the format your next tool eats
+
+`-f all -o out` writes every format at once.
+
+| format | what it is | where it goes next |
+|---|---|---|
+| `lrc` | line-timed lyrics | music players; contributing to [LRCLIB](https://lrclib.net) |
+| `elrc` | LRC A2 — same file, inline per-syllable timestamps | word-by-word players (AIMP, QQ/NetEase/Kugou, Chronograph), karaoke editors |
+| `srt` | universal subtitles | `ffmpeg`, video editors, YouTube captions |
+| `vtt` | WebVTT | HTML5 `<track>`, web players |
+| `ass` | styling + `\k` karaoke sweeps | Aegisub, `ffmpeg` burn-in |
+| `ttml` | per-syllable rich lyrics | Apple-style / AMLL-ecosystem players |
+| `aud` | Audacity label track (`start⇥end⇥text`) | **fixing the timings by hand**, then `--from-labels` back into any format; also plain TSV |
+| `json` | everything, including scores and unmatched lines | your own code |
+
+Per-syllable formats split by script: alphabetic text is grouped into words
+(`<00:06.60>Amazing <00:08.82>grace`), CJK stays one unit per character
+(`<00:21.78>治<00:21.94>部`).
+
+<details>
+<summary>How the splitting and the TTML conformance work</summary>
+
+The separator between units is taken from the source line rather than inferred,
+so a Japanese line that carries a phrasing space (`硫黄が満ちる 道の奥`) rebuilds
+character-for-character instead of gaining a space between every character.
+
+`lrc`/`elrc` cannot express an end time — the last syllable of a line has no
+close. Every other format carries the end times this aligner computes.
+
+The `ttml` output is checked against the AMLL reference parser
+([`@applemusic-like-lyrics/ttml`](https://github.com/amll-dev/applemusic-like-lyrics)),
+not just against the XML schema: lines, per-unit text and millisecond timings
+survive a real parse unchanged, in both scripts. It declares a single
+`ttm:agent` because the spec wants one per line, and carries `xml:lang` from
+`--language`. The title/artist/album an AMLL *database submission* also wants
+are deliberately absent — this tool is handed audio and lyrics and nothing else,
+so it does not invent them.
+
+</details>
+
+### Recipes
+
+```bash
+# burn subtitles into a video
+ffmpeg -i video.mp4 -vf "ass=out.ass" -c:a copy out.mp4
+
+# karaoke sweep instead of plain lines
+lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
+
+# fix a mistimed line by hand — the correction loop, in three steps
+lyric-align song.wav lyrics.txt -f aud -o out.labels.txt   # 1. export labels
+#   2. Audacity: File > Import > Labels, drag the wrong line over the waveform,
+#      then File > Export > Export Labels
+lyric-align --from-labels out.labels.txt -f lrc -o final.lrc   # 3. back to LRC
+
+# web player
+lyric-align song.wav lyrics.txt -f vtt -o out.vtt
+
+# a file shaped for an AMLL TTML DB submission
+lyric-align song.wav lyrics.txt -f ttml -o out.ttml \
+  --meta musicName="Song" --meta artists="Artist" --meta album="Album" \
+  --meta ncmMusicId=1234567
+```
+
+<details>
+<summary>Why the AMLL recipe needs <code>--meta</code>, and what is deliberately not supported</summary>
+
+The [AMLL TTML DB](https://github.com/amll-dev/amll-ttml-db) is the largest open
+collection of word-by-word lyric files — tens of thousands of them, timed by
+hand. Its checker requires `musicName`, `artists`, `album` and at least one
+platform id (`ncmMusicId` / `appleMusicId` / `spotifyId` / `qqMusicId`), none of
+which can be inferred from audio and lyrics, so `--meta` is how you supply them.
+Everything else was already in the right shape: one `<span>` per CJK character,
+spaces as text nodes *between* spans (the form their spec calls most compliant),
+and every child timestamp contained by its parent.
+
+Checked, not assumed — the output parses with the AMLL reference parser
+(`@applemusic-like-lyrics/ttml`) and clears every rule in the database's own
+checker (`scripts/lyric_checker_bot/src/validator.rs`): 70 lines, 623 syllables,
+metadata read back intact. Without `--meta` the same file fails on exactly the
+four metadata rules, which is the point of the flag.
+
+Formats deliberately left out: UltraStar `.txt` and CDG need sung **pitch**, not
+just timing — [UltraSinger](https://github.com/rakuri255/UltraSinger) and
+[karaoke-gen](https://github.com/nomadkaraoke/karaoke-gen) cover that. Apple
+Music and Spotify do not accept user-supplied lyric files at all.
+
+</details>
 
 ### Feed it a vocal stem
 
@@ -297,7 +307,15 @@ did, and it is the last entry in [Known limits](#known-limits).
 
 Lines are matched in stanza units, and `pairing` says how many lyric lines make
 one unit. That is not a property of the song — it is a property of **the ASR's
-segmentation**, and models differ. On the same four-minute track:
+segmentation**, and models differ. Upgrading `medium` → `large-v3` at a pairing
+tuned for `medium` is *worse than not upgrading*; with the pairing it deserves,
+the same upgrade removes the worst outlier entirely. This is why the default is
+`--pairing auto`, which reads lines-per-segment off the ASR output.
+
+<details>
+<summary>The measurements — model × pairing, and auto vs. fixed</summary>
+
+On the same four-minute track:
 
 | model | segments | mean segment | pairing | mean \|err\| | ≤0.5 s | worst | lines placed |
 |---|---|---|---|---|---|---|---|
@@ -319,8 +337,7 @@ outliers against pairing 1's none. Which trade you want depends on whether you
 are hand-correcting afterwards. `medium` remains the default because 74/76 with
 one bad line is the better starting point for most people.
 
-So the default is `--pairing auto`, which reads lines-per-segment off the ASR
-output. On every case measured it matches or beats the old fixed 2:
+On every case measured, `auto` matches or beats the old fixed 2:
 
 | | lines / segments | auto picks | vs. fixed 2 |
 |---|---|---|---|
@@ -336,13 +353,23 @@ about which repetition they are, whatever transcribes them. Better ASR fixes
 outliers caused by *garbled text*; it cannot fix outliers caused by *identical*
 text.
 
+</details>
+
 ### Against Vilm, the one other maintained tool here
 
 [Vilm Lyrics Aligner](https://github.com/banjuman/vilm-lyrics-aligner) solves the
 same problem for a different audience — live performance, Korean/English
 code-switching, SRT into DaVinci Resolve, with a GUI and a Resolve panel where
-this has a CLI. Same two tracks, from vocal stems, same ASR model size on both
-sides:
+this has a CLI. On two Japanese rap tracks we split the columns when there are no
+repeats; with a four-times-repeated hook this tool is ahead two to one. Notably,
+**character-level matching is not the differentiator** — Vilm compares characters
+too. What differs is a script-aware threshold and locality instead of global
+optimality.
+
+<details>
+<summary>The head-to-head, and which half of the gap is the matcher</summary>
+
+Same two tracks, from vocal stems, same ASR model size on both sides:
 
 | | 過ぎたるもの (no repeats) ||| 黒砂の誓い (4× repeated hook) |||
 |---|---|---|---|---|---|---|
@@ -361,13 +388,14 @@ over the whole song's characters, and identical repetitions carry identical
 similarity, which is the same result [we measured for a global
 matcher](#known-limits) before finding theirs.
 
-Two things this settles. **Character-level matching is not a differentiator** —
-Vilm compares characters too, and also reports weak matches rather than forcing
-them. What actually differs is smaller: a script-aware threshold instead of a
-fixed 0.48, and locality instead of global optimality. And **their start
-refinement is a genuinely better idea than ours**, gated on two independent
-alignments agreeing; it needs a second aligner, which for us means torch, which
-is the dependency this project exists to avoid.
+Two things this settles. Vilm also reports weak matches rather than forcing them,
+so the honest-gap contract is not a differentiator either; what differs is a
+script-aware threshold instead of a fixed 0.48, and locality instead of global
+optimality. And **their start refinement is a genuinely better idea than ours**,
+gated on two independent alignments agreeing; it needs a second aligner, which
+for us means torch, which is the dependency this project exists to avoid.
+
+</details>
 
 ### Coming from stable-ts?
 
@@ -376,9 +404,16 @@ last commit being "Add note about paused development". The version `pip` install
 is older than that: 2.19.1, from **2025-08**, which predates its own final
 alignment work (committed 2025-10, never released).
 
-It did this job well, and this is not a claim to have beaten it. It is also not
-a claim to have lost — the head-to-head splits, and every gap in it is smaller
-than the ±0.5 s the ground truth was marked to:
+It did this job well, and this is not a claim to have beaten it. It is also not a
+claim to have lost — the head-to-head splits, and every gap in it is smaller than
+the ±0.5 s the ground truth was marked to. What actually differs is everything
+around the accuracy: the install
+(torch, unconditionally, vs. nothing for the core), the matching (word-level
+forced alignment vs. character-level fuzzy anchor), and what happens to a line it
+cannot place — always given a time, vs. reported as unmatched.
+
+<details>
+<summary>The head-to-head, the full comparison table, and the call-site diff</summary>
 
 | | matched | mean | median | ≤0.5 s | ≤1.0 s | first line |
 |---|---|---|---|---|---|---|
@@ -423,6 +458,8 @@ On error-prone sung ASR that is the point, but if you need a fully populated
 timeline anyway, `--interpolate` fills the gaps and keeps `matched: false` on
 them so you can still tell which ones were guessed.
 
+</details>
+
 ### Match threshold is script-aware
 
 A line is accepted when its character similarity clears a threshold, and the
@@ -440,130 +477,161 @@ above, "Through many dangers, toils and snares" was placed on the line
 
 ## Known limits
 
-- **Heavily repeated refrains can land on the wrong repetition.** A hook line
-  sung four times is four identical strings; if the ASR segments the repeats
-  unevenly, the forward scan can consume the neighbouring one. On the track
-  above, one 4×-repeated hook line produced errors of +6.4 s, −3.8 s, −4.5 s and
-  +5.7 s while every non-repeated line stayed within ~0.5 s. Check hook sections
-  by hand, or align verses and hooks as separate passes.
+### Heavily repeated refrains can land on the wrong repetition
 
-  Replacing the forward scan with a globally optimal monotone assignment does
-  *not* fix this, and measured worse. Identical repetitions carry identical
-  similarity, so the global optimum just places more lines — and the extra ones
-  land on the wrong cycle:
+A hook line sung four times is four identical strings; if the ASR segments the
+repeats unevenly, the forward scan can consume the neighbouring one. On the track
+above, one 4×-repeated hook line produced errors of +6.4 s, −3.8 s, −4.5 s and
++5.7 s while every non-repeated line stayed within ~0.5 s. **Check hook sections
+by hand, or align verses and hooks as separate passes.**
 
-  | matcher | lines placed | mean \|err\| | within 0.5 s | worst |
-  |---|---|---|---|---|
-  | forward scan (shipped) | 70/80 | **0.94 s** | **26/33** | **6.4 s** |
-  | global optimum | 80/80 | 1.61 s | 22/33 | 10.6 s |
-  | global optimum + diagonal-drift penalty | 80/80 | 1.14 s | 25/33 | 10.6 s |
+Two obvious fixes were implemented and measured. Both are worse than shipping the
+limitation, and the reason generalises: identical repetitions carry identical
+similarity, so no better search over *similarity* can tell them apart.
 
-  Telling repetitions apart needs a timing prior, not a better search over
-  similarity. Meanwhile the forward window is doing real work: it stops a line
-  from reaching a distant segment that happens to clear the threshold.
+<details>
+<summary>Why a globally optimal matcher and a timing prior both measured worse</summary>
 
-  A timing prior was then tried, and also measured worse. Scoring candidates by
-  `similarity − λ·|start − predicted|`, where `predicted` is the last placement
-  plus the running median gap:
+Replacing the forward scan with a globally optimal monotone assignment does
+*not* fix this, and measured worse. The global optimum just places more lines —
+and the extra ones land on the wrong cycle:
 
-  | λ | lines placed | mean \|err\| | within 0.5 s | worst |
-  |---|---|---|---|---|
-  | 0 (shipped) | 33/33 | **0.94 s** | **26/33** | **6.4 s** |
-  | 0.1 | 33/33 | 1.67 s | 21/33 | 10.6 s |
-  | 0.3 | 33/33 | 2.05 s | 19/33 | 10.6 s |
-  | 0.5 | 8/33 | — | 7/33 | — |
+| matcher | lines placed | mean \|err\| | within 0.5 s | worst |
+|---|---|---|---|---|
+| forward scan (shipped) | 70/80 | **0.94 s** | **26/33** | **6.4 s** |
+| global optimum | 80/80 | 1.61 s | 22/33 | 10.6 s |
+| global optimum + diagonal-drift penalty | 80/80 | 1.14 s | 25/33 | 10.6 s |
 
-  The prior predicts from the aligner's own previous placements, so it cannot
-  correct a bad one — it anchors on it and drags the next lines along, which is
-  why the worst case grows rather than shrinks. Songs also do not run at one
-  pace: a median gap mispredicts hardest across a section boundary, which is
-  exactly where repeated hooks sit.
+Telling repetitions apart needs a timing prior, not a better search over
+similarity. Meanwhile the forward window is doing real work: it stops a line
+from reaching a distant segment that happens to clear the threshold.
 
-  Restricting the prior to breaking near-ties (candidates within ε similarity,
-  never overturning a clear winner) is the only variant that does not hurt, and
-  it does not clearly help either: ε=0.02 moved one line into the ≤0.5 s bucket
-  (26→27) and the mean by 0.07 s; ε=0.05 left the buckets alone and cut the
-  worst case to 5.7 s; ε=0.10 collapsed back to the harmful regime. The second
-  track was unchanged at every ε. A 0.07 s shift is below the 1 s resolution of
-  that track's ground truth, so there is no measurement here to ship on — and
-  the useful ε sits directly beside a harmful one. Left out.
+A timing prior was then tried, and also measured worse. Scoring candidates by
+`similarity − λ·|start − predicted|`, where `predicted` is the last placement
+plus the running median gap:
 
-  A prior that would actually work has to come from a signal independent of the
-  aligner's output — audio-side section detection, say — which is a different
-  tool with a much heavier dependency than a stdlib core.
-- **Correcting one placement tends to break the next one.** The first track's
-  worst case (3.6 s) has a fully diagnosed cause: `SequenceMatcher.ratio()`
-  divides by *both* strings' lengths, so a short segment matching only the
-  second half of a two-line unit outscores the longer segment that actually
-  starts it (0.615 vs 0.304; concatenating both gives 0.644, and the right
-  answer wins). Three independent fixes follow from that, and a fourth from how
-  a global character aligner gets sub-segment resolution. All four fix the
-  outlier. All four cost more elsewhere than they return:
+| λ | lines placed | mean \|err\| | within 0.5 s | worst |
+|---|---|---|---|---|
+| 0 (shipped) | 33/33 | **0.94 s** | **26/33** | **6.4 s** |
+| 0.1 | 33/33 | 1.67 s | 21/33 | 10.6 s |
+| 0.3 | 33/33 | 2.05 s | 19/33 | 10.6 s |
+| 0.5 | 8/33 | — | 7/33 | — |
 
-  | candidate selection | 過ぎたるもの mean / worst / ≤0.5 s | 黒砂 matched / mean / ≤0.5 s |
-  |---|---|---|
-  | forward scan (shipped) | **0.50 s** / 3.6 s / **14/20** | **33/33** / **0.94 s** / **26/33** |
-  | span up to 2 segments | 0.34 s / **0.7 s** / 15/20 | 29/33 / 2.13 s / 23/33 |
-  | score the unit's opening, not the whole unit | 0.34 s / **0.7 s** / 15/20 | 31/33 / 1.22 s / 23/33 |
-  | veto candidates matching only the unit's tail | 0.33 s / **0.7 s** / 14/20 | 32/33 / 1.74 s / 19/33 |
-  | ↑ but only on lines that never repeat | 0.34 s / **0.7 s** / 15/20 | 32/33 / 1.00 s / 25/33 |
+The prior predicts from the aligner's own previous placements, so it cannot
+correct a bad one — it anchors on it and drags the next lines along, which is
+why the worst case grows rather than shrinks. Songs also do not run at one
+pace: a median gap mispredicts hardest across a section boundary, which is
+exactly where repeated hooks sit.
 
-  The mechanism is the scan itself. `idx` advances to just past whatever was
-  chosen, so *every* neighbour is downstream of *every* decision. Gains and
-  losses arrive in adjacent pairs: the last row above fixes 2.30 s → 0.02 s at
-  2:20 on the second track and breaks 0.32 s → 3.70 s at 2:26, six seconds
-  later. Across both tracks it nets to two lines fixed, one broken, one turned
-  into a gap, on 53 measured lines — which is not an improvement, it is noise.
-  Local accuracy does not compose in a greedy monotone scan, and that is why
-  four unrelated interventions all land on roughly the same total.
+Restricting the prior to breaking near-ties (candidates within ε similarity,
+never overturning a clear winner) is the only variant that does not hurt, and
+it does not clearly help either: ε=0.02 moved one line into the ≤0.5 s bucket
+(26→27) and the mean by 0.07 s; ε=0.05 left the buckets alone and cut the
+worst case to 5.7 s; ε=0.10 collapsed back to the harmful regime. The second
+track was unchanged at every ε. A 0.07 s shift is below the 1 s resolution of
+that track's ground truth, so there is no measurement here to ship on — and
+the useful ε sits directly beside a harmful one. Left out.
 
-  The fourth is worth naming separately because it is what Vilm does differently
-  ([above](#against-vilm-the-one-other-maintained-tool-here)). Taking each line's start from the word
-  its first character lands on — the sub-segment resolution a global character
-  aligner buys — measured *worse on both tracks* (mean 0.50 → 0.79 s and
-  0.94 → 1.26 s; ≤0.5 s 14/20 → 9/20 and 26/33 → 20/33). Placements are already
-  late (signed mean +0.46 s and +0.21 s), and refining into the segment can only
-  add lateness. A sung phrase begins at its breath and attack, before the first
-  word the ASR is willing to timestamp, so the segment boundary is the better
-  estimate of onset.
-- **A varying unit size places more lines, and some of them badly.** `pairing`
-  is a rounded average, so it is wrong for part of any track: at 76 lines over 64
-  segments the true ratio is 1.19, and a fixed 1 leaves 27 lines unplaced while a
-  fixed 2 straddles boundaries. Choosing `(lines, segment)` jointly at each step
-  fixes the placement count and looks nearly free on the shipped metric:
+A prior that would actually work has to come from a signal independent of the
+aligner's output — audio-side section detection, say — which is a different
+tool with a much heavier dependency than a stdlib core.
 
-  | unit size | lines placed | mean \|err\| | within 0.5 s | worst | 2nd lines outside their GT window |
-  |---|---|---|---|---|---|
-  | fixed, from the ASR (shipped) | 49/76 | **0.31 s** | **15/20** | **0.8 s** | **0 of 16** |
-  | variable, k ≤ 2 | 66/76 | 0.42 s | 14/20 | 2.0 s | 2 of 18 |
-  | variable, k ≤ 2, only if it wins by 0.1 | 66/76 | 0.32 s | **15/20** | **0.8 s** | 1 of 18 (by 13.3 s) |
+</details>
 
-  The last column is the point. The other columns score only the *first* line of
-  each two-line ground-truth pair, which is where the extra placements do *not*
-  land — so on the shipped metric the third row is 17 free placements. Checking
-  the second lines, which have a known window to fall inside, shows what was
-  bought: the last verse line scores 0.000 against the hook segment on its own
-  and 0.286 once the following hook line is absorbed into the same unit, clearing
-  the 0.25 threshold, so it is placed 13.3 s late inside the hook — and the hook
-  line that had been correct is displaced with it. A unit picked to maximise
-  similarity will straddle a section boundary, and such a unit needs only its
-  tail to match; fixed pairing=1 cannot do this because a one-line unit has no
-  tail. Of the two extra placements that can be checked, one is right and one is
-  13.3 s wrong.
+### Correcting one placement tends to break the next one
 
-  On a track where the ASR merges two lines consistently the same move fails
-  from the other side: deviating downward orphans the remaining line onto the
-  next segment and shifts every later unit's phase, taking within-0.5 s from
-  26/33 to 18/33 and landing the 4×-repeated hook a repetition early. Allowing
-  only *upward* deviation appears to fix that, but only because pairing=2 with
-  k ≤ 2 leaves upward no room — permitting k ≤ 3 breaks the same track again
-  (26/33 → 13/33).
+The first track's worst case (3.6 s) has a fully diagnosed cause, and four
+independent fixes follow from it. **All four fix the outlier; all four cost more
+elsewhere than they return.** The mechanism is the greedy scan itself: `idx`
+advances past whatever was chosen, so every neighbour is downstream of every
+decision, and gains and losses arrive in adjacent pairs.
 
-  This also disposes of the reason for trying it. The four attempts above all
-  changed which segment a unit selects, so the plan here was to change how much
-  a unit *consumes* and dodge that coupling. Consumption sets how fast the
-  segment cursor advances relative to the line cursor, so it moves `idx` as
-  well — one step removed, same result.
+<details>
+<summary>The diagnosis, the four candidates, and why local accuracy does not compose</summary>
+
+`SequenceMatcher.ratio()` divides by *both* strings' lengths, so a short segment
+matching only the second half of a two-line unit outscores the longer segment
+that actually starts it (0.615 vs 0.304; concatenating both gives 0.644, and the
+right answer wins). Three independent fixes follow from that, and a fourth from
+how a global character aligner gets sub-segment resolution:
+
+| candidate selection | 過ぎたるもの mean / worst / ≤0.5 s | 黒砂 matched / mean / ≤0.5 s |
+|---|---|---|
+| forward scan (shipped) | **0.50 s** / 3.6 s / **14/20** | **33/33** / **0.94 s** / **26/33** |
+| span up to 2 segments | 0.34 s / **0.7 s** / 15/20 | 29/33 / 2.13 s / 23/33 |
+| score the unit's opening, not the whole unit | 0.34 s / **0.7 s** / 15/20 | 31/33 / 1.22 s / 23/33 |
+| veto candidates matching only the unit's tail | 0.33 s / **0.7 s** / 14/20 | 32/33 / 1.74 s / 19/33 |
+| ↑ but only on lines that never repeat | 0.34 s / **0.7 s** / 15/20 | 32/33 / 1.00 s / 25/33 |
+
+Gains and losses arrive in adjacent pairs: the last row above fixes
+2.30 s → 0.02 s at 2:20 on the second track and breaks 0.32 s → 3.70 s at 2:26,
+six seconds later. Across both tracks it nets to two lines fixed, one broken, one
+turned into a gap, on 53 measured lines — which is not an improvement, it is
+noise. Local accuracy does not compose in a greedy monotone scan, and that is why
+four unrelated interventions all land on roughly the same total.
+
+The fourth is worth naming separately because it is what Vilm does differently
+([above](#against-vilm-the-one-other-maintained-tool-here)). Taking each line's start from the word
+its first character lands on — the sub-segment resolution a global character
+aligner buys — measured *worse on both tracks* (mean 0.50 → 0.79 s and
+0.94 → 1.26 s; ≤0.5 s 14/20 → 9/20 and 26/33 → 20/33). Placements are already
+late (signed mean +0.46 s and +0.21 s), and refining into the segment can only
+add lateness. A sung phrase begins at its breath and attack, before the first
+word the ASR is willing to timestamp, so the segment boundary is the better
+estimate of onset.
+
+</details>
+
+### A varying unit size places more lines, and some of them badly
+
+`pairing` is a rounded average, so it is wrong for part of any track. Choosing
+`(lines, segment)` jointly at each step fixes the placement count and looks nearly
+free — until you score the half of the lines the shipped metric does not look at,
+where one of the extra placements is **13.3 s wrong**.
+
+<details>
+<summary>The measurements, and how an unscored half hid the cost</summary>
+
+At 76 lines over 64 segments the true ratio is 1.19, and a fixed 1 leaves 27 lines
+unplaced while a fixed 2 straddles boundaries:
+
+| unit size | lines placed | mean \|err\| | within 0.5 s | worst | 2nd lines outside their GT window |
+|---|---|---|---|---|---|
+| fixed, from the ASR (shipped) | 49/76 | **0.31 s** | **15/20** | **0.8 s** | **0 of 16** |
+| variable, k ≤ 2 | 66/76 | 0.42 s | 14/20 | 2.0 s | 2 of 18 |
+| variable, k ≤ 2, only if it wins by 0.1 | 66/76 | 0.32 s | **15/20** | **0.8 s** | 1 of 18 (by 13.3 s) |
+
+The last column is the point. The other columns score only the *first* line of
+each two-line ground-truth pair, which is where the extra placements do *not*
+land — so on the shipped metric the third row is 17 free placements. Checking
+the second lines, which have a known window to fall inside, shows what was
+bought: the last verse line scores 0.000 against the hook segment on its own
+and 0.286 once the following hook line is absorbed into the same unit, clearing
+the 0.25 threshold, so it is placed 13.3 s late inside the hook — and the hook
+line that had been correct is displaced with it. A unit picked to maximise
+similarity will straddle a section boundary, and such a unit needs only its
+tail to match; fixed pairing=1 cannot do this because a one-line unit has no
+tail. Of the two extra placements that can be checked, one is right and one is
+13.3 s wrong.
+
+On a track where the ASR merges two lines consistently the same move fails
+from the other side: deviating downward orphans the remaining line onto the
+next segment and shifts every later unit's phase, taking within-0.5 s from
+26/33 to 18/33 and landing the 4×-repeated hook a repetition early. Allowing
+only *upward* deviation appears to fix that, but only because pairing=2 with
+k ≤ 2 leaves upward no room — permitting k ≤ 3 breaks the same track again
+(26/33 → 13/33).
+
+This also disposes of the reason for trying it. The four attempts above all
+changed which segment a unit selects, so the plan here was to change how much
+a unit *consumes* and dodge that coupling. Consumption sets how fast the
+segment cursor advances relative to the line cursor, so it moves `idx` as
+well — one step removed, same result.
+
+</details>
+
+### The ASR is the floor, and singing can put it there
+
 - **Slow, sustained singing is much harder than rap** — hymns, ballads and
   school songs stretch vowels until the ASR stops producing usable segments.
   Reach for `--no-vad` first (see the one-minute example); dense, consonant-rich
