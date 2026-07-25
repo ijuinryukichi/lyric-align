@@ -25,6 +25,19 @@ live. Restricted to breaking near-ties it stops hurting without clearly helping
 (one line gained, below the ground truth's own resolution), so it is not here.
 See the README for the full sweep.
 
+Four further attempts to fix the remaining outlier — letting a candidate span
+two consecutive segments, scoring candidates on how well they explain the unit's
+*opening* rather than the whole unit, vetoing candidates that match only its
+tail, and taking the start from the word the first character lands on — all
+worked, and all cost more than they returned. The first three share a mechanism:
+`idx` advances to just past whatever was chosen, so every neighbour is
+downstream of every decision, and gains and losses arrive in adjacent pairs (the
+best variant fixes 2.30 s -> 0.02 s at 2:20 on one track and breaks
+0.32 s -> 3.70 s at 2:26). The fourth fails differently: placements are already
+late (signed mean +0.46 s / +0.21 s) because a sung phrase begins at its breath
+and attack, earlier than the first word an ASR will timestamp, so refining into
+the segment only adds lateness. See the README for both tables.
+
 Design philosophy: when a line cannot be confidently matched, we mark it
 unmatched rather than inventing a timestamp. Forced aligners always emit an
 answer and thus fail *silently* (e.g. drifting into the intro); we prefer honest
