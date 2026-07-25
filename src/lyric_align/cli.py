@@ -3,6 +3,7 @@
     lyric-align AUDIO LYRICS.txt -o out.lrc          # transcribe + align
     lyric-align AUDIO LYRICS.txt --separate -o o.lrc  # split vocals first (better)
     lyric-align --segments segs.json LYRICS.txt -f ass --karaoke
+    lyric-align --from-labels fixed.labels.txt -f lrc  # convert corrected labels
 
 LYRICS is a plain-text file, one lyric line per line. Blank lines and section
 markers ([Verse 1], [Hook]) are ignored, so pasted lyric sheets work as-is.
@@ -17,7 +18,7 @@ from pathlib import Path
 
 from . import __version__
 from .anchor import align, interpolate_gaps
-from .formats import EXTENSIONS, FORMATTERS, NEEDS_SYLLABLES
+from .formats import EXTENSIONS, FORMATTERS, NEEDS_SYLLABLES, from_aud
 from .model import Segment
 from .normalize import CJK_THRESHOLD, LATIN_THRESHOLD, default_threshold
 
@@ -55,10 +56,14 @@ examples:
   lyric-align song.wav lyrics.txt --separate -o out.lrc   split vocals first (better on a mix)
   lyric-align song.mp3 lyrics.txt --language en --no-vad  English, sung slowly
   lyric-align --segments segs.json lyrics.txt -f ass --karaoke
+  lyric-align --from-labels fixed.labels.txt -f lrc   convert labels you corrected
 
 LYRICS is plain text, one lyric line per line. Blank lines, # comments and
 section markers ([Verse 1], [Hook]) are skipped, so a pasted lyric sheet works
 as-is.
+
+To fix a timing by hand, write '-f aud', drag the line over the waveform in
+Audacity, export the labels, and read them back with --from-labels.
 """
 
 
@@ -66,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="lyric-align", description=DESCRIPTION,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("audio", nargs="?", help="audio file (omit if --segments given)")
-    p.add_argument("lyrics", help="plain-text lyrics, one line per line")
+    p.add_argument("lyrics", nargs="?", help="plain-text lyrics, one line per line")
 
     out = p.add_argument_group("output")
     out.add_argument("-o", "--output", help="output path (default: stdout)")
@@ -78,6 +83,12 @@ def build_parser() -> argparse.ArgumentParser:
                      help="per-character timings, for karaoke \\k tags (ass/json). "
                           "Always on for elrc/ttml, which are per-syllable formats")
     out.add_argument("-q", "--quiet", action="store_true", help="suppress progress reporting")
+    out.add_argument("--from-labels", metavar="FILE",
+                     help="read an Audacity label track instead of aligning, and "
+                          "convert it to -f. This closes the correction loop: export "
+                          "'aud', drag the wrong lines over the waveform in Audacity, "
+                          "export the labels again, and turn them back into LRC/TTML/"
+                          "anything. Takes no AUDIO or LYRICS — the labels hold both")
 
     asr = p.add_argument_group(
         "transcription", "ignored when --segments is given")
@@ -121,16 +132,58 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
 
+    # Both positionals are optional, so argparse fills AUDIO first. A lone
+    # positional can only be the lyrics — there is no aligning audio without
+    # them — so hand it over rather than reporting a missing LYRICS.
+    if args.lyrics is None and args.audio is not None:
+        args.audio, args.lyrics = None, args.audio
+
     def log(msg: str) -> None:
         if not args.quiet:
             print(msg, file=sys.stderr)
 
     for label, path in (("lyrics", args.lyrics), ("audio", args.audio),
-                        ("segments", args.segments)):
+                        ("segments", args.segments), ("labels", args.from_labels)):
         if path and not Path(path).exists():
             print(f"error: {label} file not found: {path}", file=sys.stderr)
             return 2
 
+    fmt = args.format
+    if fmt is None and args.output:
+        fmt = Path(args.output).suffix.lstrip(".").lower()
+    if fmt != "all" and fmt not in FORMATTERS:
+        fmt = "json"
+    if fmt == "all" and not args.output:
+        print("error: -f all needs -o to name the files to write", file=sys.stderr)
+        return 2
+    targets = sorted(FORMATTERS) if fmt == "all" else [fmt]
+    # Per-syllable formats are pointless without character timings, so turn them
+    # on for those rather than silently emitting line-level output.
+    karaoke = args.karaoke or bool(NEEDS_SYLLABLES.intersection(targets))
+
+    if args.from_labels:
+        # Converting a corrected label track: the file already holds the text and
+        # the times, so there is nothing to transcribe and nothing to match.
+        try:
+            aligned = from_aud(Path(args.from_labels).read_text())
+        except ValueError as e:
+            print(f"error: {args.from_labels}: {e}", file=sys.stderr)
+            return 2
+        if not aligned:
+            print(f"error: no labels found in {args.from_labels}", file=sys.stderr)
+            return 2
+        log(f"labels: {len(aligned)} (from {args.from_labels})")
+        if karaoke:
+            # Labels are line-level; per-syllable output would have to be invented.
+            log("note: a label track carries no per-character timings, so "
+                f"{'/'.join(sorted(NEEDS_SYLLABLES.intersection(targets))) or 'karaoke'} "
+                "output stays line-level")
+        return _write(args, fmt, targets, aligned, karaoke, log)
+
+    if not args.lyrics:
+        print("error: provide LYRICS (or --from-labels to convert a label track)",
+              file=sys.stderr)
+        return 2
     lyrics = read_lyrics(Path(args.lyrics))
     if not lyrics:
         print(f"error: no lyric lines found in {args.lyrics}", file=sys.stderr)
@@ -174,21 +227,6 @@ def main(argv=None) -> int:
         print("error: provide AUDIO or --segments", file=sys.stderr)
         return 2
 
-    fmt = args.format
-    if fmt is None and args.output:
-        fmt = Path(args.output).suffix.lstrip(".").lower()
-    if fmt != "all" and fmt not in FORMATTERS:
-        fmt = "json"
-
-    if fmt == "all" and not args.output:
-        print("error: -f all needs -o to name the files to write", file=sys.stderr)
-        return 2
-
-    targets = sorted(FORMATTERS) if fmt == "all" else [fmt]
-    # Per-syllable formats are pointless without character timings, so turn them
-    # on for those rather than silently emitting line-level output.
-    karaoke = args.karaoke or bool(NEEDS_SYLLABLES.intersection(targets))
-
     threshold = args.threshold
     if threshold is None:
         threshold = default_threshold(lyrics)
@@ -226,6 +264,10 @@ def main(argv=None) -> int:
             log(f"only {matched}/{len(aligned)} lines matched from {len(segments)} "
                 f"segments — try " + ", or ".join(hints))
 
+    return _write(args, fmt, targets, aligned, karaoke, log)
+
+
+def _write(args, fmt, targets, aligned, karaoke, log) -> int:
     # TTML carries the language; the ASR language code is the one we know.
     lang = args.language or ""
 
