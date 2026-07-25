@@ -215,6 +215,24 @@ filled (they stay flagged as guessed).
 The core (steps 3–5) is **pure Python standard library** — no numpy, no torch.
 The heavy pieces (Whisper, Demucs) are optional extras behind lazy imports.
 
+## Where this came from
+
+This was written to put lyrics on the timeline for a set of music videos, where
+the lyrics are Japanese and the delivery is rap. That is the whole reason the
+matcher compares characters instead of words, and why the accuracy below is
+measured on sung Japanese rather than on read speech.
+
+The two tracks the numbers come from are
+[過ぎたるもの](https://youtu.be/cpXhuZK5rug) (20 lines, ±0.5 s ground truth) and
+[黒砂の誓い](https://youtu.be/b8mjRge4Ffk) (33 lines, 1 s granularity). Others
+from the same catalogue: [六の巷](https://youtu.be/OIonX0bZjmI),
+[永遠の炎](https://youtu.be/lZIW59t9O-M) — [toryu.tokyo](https://toryu.tokyo).
+
+Short lyric fragments from those tracks appear in the test fixtures. They are the
+author's own work and are **not** covered by this project's MIT license; see
+[LICENSE](LICENSE). The runnable example (`examples/amazing_grace.txt`) is public
+domain, so anyone can reproduce it end to end.
+
 ## Accuracy
 
 Measured against 20 human-marked lyric lines of a 4-minute Japanese rap track
