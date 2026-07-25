@@ -14,6 +14,17 @@ extra placements land on the wrong repetition: mean error 0.94 s -> 1.14-1.61 s,
 worst 6.4 s -> 10.6 s on a track with a 4x-repeated hook. Locality beats global
 optimality here because similarity alone cannot tell repetitions apart.
 
+A timing prior — score candidates by `similarity - lam * |start - predicted|`,
+predicting from the last placement plus the running median gap — was the obvious
+next move and also measured worse (mean 0.94 s -> 1.67 s at lam=0.1, worst
+6.4 s -> 10.6 s, collapsing to 8/33 placements by lam=0.5). It predicts from
+*our own* previous placements, so it cannot correct a bad one; it anchors on it
+and drags the following lines along. Songs do not run at one pace either, so a
+median gap mispredicts hardest across a section boundary — where repeated hooks
+live. Restricted to breaking near-ties it stops hurting without clearly helping
+(one line gained, below the ground truth's own resolution), so it is not here.
+See the README for the full sweep.
+
 Design philosophy: when a line cannot be confidently matched, we mark it
 unmatched rather than inventing a timestamp. Forced aligners always emit an
 answer and thus fail *silently* (e.g. drifting into the intro); we prefer honest
