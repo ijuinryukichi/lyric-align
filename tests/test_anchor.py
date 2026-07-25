@@ -5,6 +5,7 @@ from lyric_align import align, interpolate_gaps
 from lyric_align.breath import split_words_by_breath
 from lyric_align.charmap import char_timings
 from lyric_align.model import Segment, Word
+from lyric_align.normalize import similarity
 
 FIX = Path(__file__).parent / "fixtures" / "segments_sample.json"
 
@@ -41,6 +42,31 @@ def test_unmatched_line_is_honest():
     assert out[0].matched is True
     assert out[1].matched is False
     assert out[1].start is None
+
+
+def test_a_reachable_segment_below_the_threshold_stays_unmatched():
+    # The test above withholds the segment (window=1), so it exercises the
+    # forward window, not the threshold. This one puts a candidate squarely in
+    # reach and relies on the score alone to reject it — the honest-gap contract
+    # is what keeps this line empty, and nothing else.
+    seg = Segment(0.0, 3.0, "全然別のことを喋っている")
+    out = align([seg], ["君が袖振る"], pairing=1)
+    assert out[0].matched is False
+    assert out[0].start is None and out[0].end is None
+
+
+def test_the_cjk_floor_still_accepts_a_badly_heard_true_match():
+    # Real ASR output for a real line, and the reason the CJK floor sits at 0.25:
+    # a *correct* match on sung Japanese can score as low as 0.26. The model got
+    # the moment right (朝霧開戦 is there, 九月十五 became "9月15") and still only
+    # clears the floor by a hair. Raise the floor and this true match is lost.
+    unit = "九月十五朝霧開戦黒田細川矢刃交わし合戦"
+    heard = "9月15 朝霧開戦 来るだ 遅かえば 可視化せん"
+    assert 0.25 < similarity(unit, heard) < 0.30
+
+    seg = Segment(0.0, 6.0, heard)
+    out = align([seg], ["九月十五朝霧開戦", "黒田細川矢刃交わし合戦"], pairing=2)
+    assert [a.matched for a in out] == [True, True]
 
 
 def test_interpolate_fills_gaps():
