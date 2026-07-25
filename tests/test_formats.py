@@ -2,8 +2,8 @@ import json
 import re
 
 from lyric_align.charmap import char_timings, syllable_timings
-from lyric_align.formats import (EXTENSIONS, FORMATTERS, to_aud, to_elrc, to_ttml,
-                                 to_vtt)
+from lyric_align.formats import (EXTENSIONS, FORMATTERS, from_aud, to_aud, to_elrc,
+                                 to_ttml, to_vtt)
 from lyric_align.model import AlignedLine, Word
 
 WORDS_EN = [Word(0.0, 0.5, "Amazing"), Word(0.5, 1.0, "grace")]
@@ -140,6 +140,71 @@ def test_ttml_language_comes_from_the_cli(tmp_path, capsys):
                  "--language", "ja", "-f", "ttml", "-o", str(out)]) == 0
     assert 'xml:lang="ja"' in out.read_text()
     capsys.readouterr()
+
+
+def test_labels_round_trip_through_audacity_and_back():
+    # The correction loop: write labels, a human drags one, read them back.
+    lines = [en_line(), ja_line()]
+    exported = to_aud(lines)
+    corrected = exported.replace("0.000000\t1.000000\tAmazing grace",
+                                 "2.500000\t3.750000\tAmazing grace")
+    back = from_aud(corrected)
+    assert [a.line for a in back] == ["Amazing grace", "島の左近"]
+    assert (back[0].start, back[0].end) == (2.5, 3.75)
+    assert all(a.matched for a in back)
+    # Round-tripping an untouched file must not move anything.
+    assert to_aud(from_aud(exported)) == exported
+
+
+def test_from_aud_tolerates_what_audacity_actually_writes():
+    # A click rather than a drag gives a point label; a frequency-range label
+    # adds a continuation row beginning with a backslash.
+    text = ("1.000000\t1.000000\tpoint label\n"
+            "2.000000\t3.000000\tranged label\n"
+            "\\\t200.000000\t800.000000\n"
+            "\n")
+    got = from_aud(text)
+    assert [a.line for a in got] == ["point label", "ranged label"]
+    assert got[0].start == got[0].end == 1.0
+
+
+def test_from_aud_names_the_bad_line():
+    import pytest
+    with pytest.raises(ValueError, match="line 2"):
+        from_aud("0.0\t1.0\tfine\nnot a label row\n")
+    with pytest.raises(ValueError, match="line 1"):
+        from_aud("start\tend\ttext\n")
+
+
+def test_cli_converts_a_label_track_without_audio_or_lyrics(tmp_path, capsys):
+    from lyric_align.cli import main
+    labels = tmp_path / "in.labels.txt"
+    labels.write_text("6.600000\t14.300000\tAmazing grace\n"
+                      "14.300000\t23.700000\tThat saved a wretch like me\n")
+    out = tmp_path / "out.lrc"
+    assert main(["--from-labels", str(labels), "-o", str(out)]) == 0
+    assert out.read_text().splitlines() == [
+        "[00:06.60]Amazing grace",
+        "[00:14.30]That saved a wretch like me",
+    ]
+    capsys.readouterr()
+
+
+def test_cli_says_a_label_track_cannot_give_per_syllable_output(tmp_path, capsys):
+    from lyric_align.cli import main
+    labels = tmp_path / "in.labels.txt"
+    labels.write_text("0.000000\t1.000000\tAmazing grace\n")
+    out = tmp_path / "out.ttml"
+    assert main(["--from-labels", str(labels), "-o", str(out)]) == 0
+    assert "stays line-level" in capsys.readouterr().err
+    xml = out.read_text()
+    assert "Amazing grace" in xml and "<span" not in xml
+
+
+def test_cli_reports_a_missing_lyrics_argument(capsys):
+    from lyric_align.cli import main
+    assert main([]) == 2
+    assert "--from-labels" in capsys.readouterr().err
 
 
 def test_unmatched_lines_are_absent_from_every_text_format():

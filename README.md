@@ -73,7 +73,7 @@ Whisper flavor produces.
 | `vtt` | WebVTT | HTML5 `<track>`, web players |
 | `ass` | styling + `\k` karaoke sweeps | Aegisub, `ffmpeg` burn-in |
 | `ttml` | per-syllable rich lyrics | Apple-style / AMLL-ecosystem players |
-| `aud` | Audacity label track (`start⇥end⇥text`) | **fixing the timings by hand**; also plain TSV |
+| `aud` | Audacity label track (`start⇥end⇥text`) | **fixing the timings by hand**, then `--from-labels` back into any format; also plain TSV |
 | `json` | everything, including scores and unmatched lines | your own code |
 
 Per-syllable formats split by script: alphabetic text is grouped into words
@@ -105,9 +105,11 @@ ffmpeg -i video.mp4 -vf "ass=out.ass" -c:a copy out.mp4
 # karaoke sweep instead of plain lines
 lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
 
-# fix a mistimed line by hand: import out.labels.txt into Audacity
-#   (File > Import > Labels), drag it over the waveform, export the labels again
-lyric-align song.wav lyrics.txt -f aud -o out.labels.txt
+# fix a mistimed line by hand — the correction loop, in three steps
+lyric-align song.wav lyrics.txt -f aud -o out.labels.txt   # 1. export labels
+#   2. Audacity: File > Import > Labels, drag the wrong line over the waveform,
+#      then File > Export > Export Labels
+lyric-align --from-labels out.labels.txt -f lrc -o final.lrc   # 3. back to LRC
 
 # web player
 lyric-align song.wav lyrics.txt -f vtt -o out.vtt
