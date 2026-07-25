@@ -1,14 +1,17 @@
 """Command-line interface.
 
     lyric-align AUDIO LYRICS.txt -o out.lrc          # transcribe + align
+    lyric-align AUDIO LYRICS.txt --separate -o o.lrc  # split vocals first (better)
     lyric-align --segments segs.json LYRICS.txt -f ass --karaoke
 
-LYRICS is a plain-text file, one lyric line per line; blank lines are ignored.
+LYRICS is a plain-text file, one lyric line per line. Blank lines and section
+markers ([Verse 1], [Hook]) are ignored, so pasted lyric sheets work as-is.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -17,9 +20,18 @@ from .anchor import align, interpolate_gaps
 from .formats import FORMATTERS
 from .model import Segment
 
+SECTION_MARKER = re.compile(r"^[\[(](?:[^\[\]()]{0,40})[\])]$")
+
 
 def read_lyrics(path: Path) -> list[str]:
-    return [ln.strip() for ln in path.read_text().splitlines() if ln.strip()]
+    """One lyric line per line; drop blanks, section markers and # comments."""
+    out = []
+    for raw in path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or SECTION_MARKER.match(line):
+            continue
+        out.append(line)
+    return out
 
 
 def load_segments(path: Path) -> list[Segment]:
@@ -35,6 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-f", "--format", default=None,
                    choices=sorted(FORMATTERS), help="output format (default: infer from -o, else json)")
     p.add_argument("--segments", help="pre-computed segments JSON (skip ASR)")
+    p.add_argument("--separate", action="store_true",
+                   help="split the vocal stem with Demucs first (needs [separate]); "
+                        "slow but clearly more accurate on a full mix")
     p.add_argument("--pairing", type=int, default=2,
                    help="lyric lines per stanza unit (default 2; use 1 if ASR splits per line)")
     p.add_argument("--threshold", type=float, default=0.25)
@@ -45,20 +60,67 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--language", default="ja")
     p.add_argument("--model", default="medium", help="faster-whisper model size")
     p.add_argument("--device", default="cpu")
+    p.add_argument("--no-vad", dest="vad", action="store_false",
+                   help="disable the ASR voice-activity filter. The filter helps on dense "
+                        "delivery (rap) but silences slow, sustained singing — if you get "
+                        "few or no segments, try this first")
+    p.add_argument("-q", "--quiet", action="store_true", help="suppress progress reporting")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+
+    def log(msg: str) -> None:
+        if not args.quiet:
+            print(msg, file=sys.stderr)
+
+    for label, path in (("lyrics", args.lyrics), ("audio", args.audio),
+                        ("segments", args.segments)):
+        if path and not Path(path).exists():
+            print(f"error: {label} file not found: {path}", file=sys.stderr)
+            return 2
+
     lyrics = read_lyrics(Path(args.lyrics))
+    if not lyrics:
+        print(f"error: no lyric lines found in {args.lyrics}", file=sys.stderr)
+        return 2
 
     if args.segments:
         segments = load_segments(Path(args.segments))
+        log(f"segments: {len(segments)} (from {args.segments})")
     elif args.audio:
-        from .asr import transcribe
-        segments = transcribe(args.audio, language=args.language,
-                              model_size=args.model, device=args.device)
+        audio = args.audio
+        try:
+            if args.separate:
+                from .separate import separate_vocals
+                log("separating vocals (Demucs) — this is the slow step, result is cached ...")
+                audio = separate_vocals(audio)
+                log(f"vocal stem: {audio}")
+            from .asr import transcribe
+        except ImportError as e:
+            # Missing optional extra: report the one-line install hint, not a traceback.
+            print(f"error: {e}", file=sys.stderr)
+            return 3
+        log(f"transcribing with faster-whisper ({args.model}, {args.language}"
+            f"{'' if args.vad else ', vad off'}) ...")
+        segments = transcribe(audio, language=args.language, model_size=args.model,
+                              device=args.device, vad=args.vad)
+        log(f"segments: {len(segments)}")
+        if not segments and args.vad:
+            # The voice-activity filter is tuned for dense delivery; on sustained
+            # singing it can swallow the whole track. Retry once, loudly, rather
+            # than reporting "0 lines aligned" and leaving the cause unexplained.
+            log("no segments with the voice-activity filter — retrying with --no-vad ...")
+            segments = transcribe(audio, language=args.language, model_size=args.model,
+                                  device=args.device, vad=False)
+            log(f"segments: {len(segments)}")
+        if not segments:
+            print("error: transcription produced no segments. The recording may be too "
+                  "quiet or too reverberant — try normalizing its loudness "
+                  "(ffmpeg -af loudnorm) or a larger --model.", file=sys.stderr)
+            return 1
     else:
         print("error: provide AUDIO or --segments", file=sys.stderr)
         return 2
@@ -77,11 +139,20 @@ def main(argv=None) -> int:
     text = FORMATTERS[fmt](aligned, karaoke=args.karaoke)
 
     matched = sum(1 for a in aligned if a.matched)
-    print(f"aligned {matched}/{len(aligned)} lines", file=sys.stderr)
+    log(f"aligned {matched}/{len(aligned)} lines")
+
+    # Name the gaps: the whole point of honest-gap semantics is that a human can
+    # see exactly which lines need a look, so print them rather than a bare count.
+    unmatched = [(i, a) for i, a in enumerate(aligned, 1) if not a.matched]
+    if unmatched:
+        filled = " (timestamps interpolated)" if args.interpolate else " (omitted from output)"
+        log(f"unmatched{filled} — check these lines:")
+        for i, a in unmatched:
+            log(f"  line {i}: sim {a.score:.2f}  {a.line}")
 
     if args.output:
         Path(args.output).write_text(text)
-        print(f"wrote {args.output}", file=sys.stderr)
+        log(f"wrote {args.output}")
     else:
         sys.stdout.write(text)
     return 0
