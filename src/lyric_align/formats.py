@@ -62,16 +62,21 @@ def to_elrc(aligned: list[AlignedLine]) -> str:
         if not units:
             lines.append(f"{_lrc_ts(a.start)}{a.line}")
             continue
-        body = "".join(f"<{_lrc_ts(u['start'])[1:-1]}>{u['text']}"
-                       + (" " if _spaced(a.line) and i < len(units) - 1 else "")
+        body = "".join(f"<{_lrc_ts(u['start'])[1:-1]}>{u['text']}{_gap(units, i)}"
                        for i, u in enumerate(units))
         lines.append(f"{_lrc_ts(a.start)}{body}")
     return "\n".join(lines) + "\n"
 
 
-def _spaced(line: str) -> bool:
-    """Whether syllable units should be re-joined with spaces (alphabetic text)."""
-    return " " in line.strip()
+def _gap(units: list[dict], i: int) -> str:
+    """The separator that followed unit ``i`` in the source line.
+
+    Taken from the line itself rather than guessed from the script, so both
+    "Amazing grace" and "硫黄が満ちる 道の奥" rebuild character-for-character.
+    A trailing space is dropped: lyric lines are stripped, and TTML consumers
+    trim it anyway.
+    """
+    return " " if units[i].get("space_after") and i < len(units) - 1 else ""
 
 
 def _srt_ts(t: float) -> str:
@@ -139,29 +144,48 @@ def to_ttml(aligned: list[AlignedLine], lang: str = "") -> str:
 
     Word timings become nested <span> elements inside the line <p>, which is what
     players in that ecosystem (e.g. AMLL) read for word-by-word highlighting.
+
+    Verified against the AMLL reference parser (``@applemusic-like-lyrics/ttml``):
+    lines, per-unit text and millisecond timings survive a real parse, and the
+    spaces between units are emitted as text nodes outside the spans, which is
+    the separator form that specification calls most compliant.
+
+    Only the metadata we actually know is written. A single ``ttm:agent`` is
+    declared and referenced because the spec requires one per line; the title,
+    artist and album an AMLL database submission also wants are left out rather
+    than invented, since this tool is given audio and lyrics and nothing else.
     """
     body = []
+    word_level = False
     for i, a in enumerate(aligned, 1):
         if _skip(a):
             continue
         units = syllable_timings(a.line, a.chars or [])
         p_open = (f'      <p begin="{_ttml_ts(a.start)}" end="{_ttml_ts(a.end)}" '
-                  f'itunes:key="L{i}">')
+                  f'itunes:key="L{i}" ttm:agent="v1">')
         if units:
-            joiner = " " if _spaced(a.line) else ""
-            inner = joiner.join(
+            word_level = True
+            inner = "".join(
                 f'<span begin="{_ttml_ts(u["start"])}" end="{_ttml_ts(u["end"])}">'
-                f'{escape(u["text"])}</span>' for u in units)
+                f'{escape(u["text"])}</span>{_gap(units, j)}'
+                for j, u in enumerate(units))
         else:
             inner = escape(a.line)
         body.append(f"{p_open}{inner}</p>")
-    lang_attr = f' xml:lang="{escape(lang)}"' if lang else ""
+    lang_attr = f'\n    xml:lang="{escape(lang)}"' if lang else ""
+    timing = "Word" if word_level else "Line"
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<tt xmlns="http://www.w3.org/ns/ttml"\n'
         '    xmlns:ttm="http://www.w3.org/ns/ttml#metadata"\n'
         '    xmlns:itunes="http://music.apple.com/lyric-ttml-internal"'
-        f'{lang_attr}>\n'
+        f'{lang_attr}\n'
+        f'    itunes:timing="{timing}">\n'
+        '  <head>\n'
+        '    <metadata>\n'
+        '      <ttm:agent type="person" xml:id="v1"/>\n'
+        '    </metadata>\n'
+        '  </head>\n'
         '  <body>\n'
         '    <div>\n'
         + "\n".join(body) + "\n"
@@ -213,14 +237,14 @@ def to_ass(aligned: list[AlignedLine], karaoke: bool = False) -> str:
 
 
 FORMATTERS = {
-    "json": lambda a, karaoke=False: to_json(a),
-    "lrc": lambda a, karaoke=False: to_lrc(a),
-    "elrc": lambda a, karaoke=False: to_elrc(a),
-    "srt": lambda a, karaoke=False: to_srt(a),
-    "vtt": lambda a, karaoke=False: to_vtt(a),
-    "ass": lambda a, karaoke=False: to_ass(a, karaoke=karaoke),
-    "ttml": lambda a, karaoke=False: to_ttml(a),
-    "aud": lambda a, karaoke=False: to_aud(a),
+    "json": lambda a, karaoke=False, lang="": to_json(a),
+    "lrc": lambda a, karaoke=False, lang="": to_lrc(a),
+    "elrc": lambda a, karaoke=False, lang="": to_elrc(a),
+    "srt": lambda a, karaoke=False, lang="": to_srt(a),
+    "vtt": lambda a, karaoke=False, lang="": to_vtt(a),
+    "ass": lambda a, karaoke=False, lang="": to_ass(a, karaoke=karaoke),
+    "ttml": lambda a, karaoke=False, lang="": to_ttml(a, lang=lang),
+    "aud": lambda a, karaoke=False, lang="": to_aud(a),
 }
 
 # Formats whose whole point is per-syllable timing, so the CLI computes character
