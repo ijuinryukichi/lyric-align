@@ -117,17 +117,55 @@ I had written down a different reason for each. There was one reason: **local
 accuracy does not compose in a greedy monotone scan.** Four unrelated
 interventions land on the same total because the errors are not independent.
 
+## An aside: the one other tool doing this
+
+[Vilm Lyrics Aligner](https://github.com/banjuman/vilm-lyrics-aligner) appeared
+while I was working on this. It solves the same problem — your lyrics, its
+timings — for a different audience: live performance, Korean/English
+code-switching, SRT into DaVinci Resolve. It has a GUI and an editor panel; this
+has a CLI. It is also, as far as I can find, the only other maintained thing in
+this niche, so it is the only real check on whether any of my choices are load
+bearing.
+
+Its matcher takes the route I did not: concatenate the entire song into one
+character stream, concatenate the ASR into another, and run a single semi-global
+Needleman-Wunsch over the pair. Each line then reads its start from whichever
+character it mapped to — sub-segment resolution, where mine snaps to a segment
+edge.
+
+Run against the same two tracks, from vocal stems, with the same ASR model size
+on both sides:
+
+| | 過ぎたるもの (no repeats) | | | 黒砂の誓い (4× hook) | | |
+|---|---|---|---|---|---|---|
+| | mean | ≤0.5 s | worst | mean | ≤0.5 s | worst |
+| lyric-align | 0.50 s | **14/20** | 3.58 s | **0.94 s** | **26/33** | **6.36 s** |
+| Vilm | 0.50 s | 10/20 | **2.06 s** | 1.46 s | 13/33 | 8.13 s |
+
+On the track without repeats the means are identical to three decimals, and we
+each win one column: their tail is 1.5 s shorter than mine, my body has four more
+lines inside half a second. On the track with a four-times-repeated hook I am
+ahead two to one.
+
+That second gap is the matcher, not the pipeline. Feeding **my** ASR output
+through **their** matching layer and scoring the result the same way: 14/33
+inside 0.5 s against my 26/33, mean 1.55 s against 0.94 s. Global optimality over
+identical characters cannot tell the third chorus from the fourth — which is the
+DP result from earlier in this post, arrived at independently by someone else's
+code.
+
+It also demolishes a line I had been telling myself. "Character-level matching for
+space-less languages" is not a differentiator; Vilm compares characters too, and
+reports weak matches instead of forcing them, same as I do. The things that
+actually differ are smaller and duller: a script-aware threshold instead of a
+fixed 0.48, and locality instead of global optimality.
+
 ## Fix 5, which fails differently
 
-The one comparable tool in this niche takes a different route: concatenate the
-whole song into one character stream, align it globally, and read each line's
-start from the character it maps to. That buys sub-segment resolution — a start
-time from inside a segment rather than from its edge.
-
-I did not adopt their architecture, but I could steal the resolution: keep my
-segment selection, then refine the start to the word the line's first character
-lands on. Selection unchanged, cursor unchanged — structurally immune to the
-coupling that killed the other four.
+So: steal the resolution without the architecture. Keep my segment selection,
+then refine each start to the word the line's first character lands on. Selection
+unchanged, cursor unchanged — structurally immune to the coupling that killed the
+other four.
 
 It was worse on both tracks. Mean 0.50 → 0.79 s and 0.94 → 1.26 s; lines inside
 0.5 s from 14/20 to 9/20 and from 26/33 to 20/33.
@@ -138,10 +176,12 @@ begins at its breath and its attack, before the first word an ASR is willing to
 timestamp. The segment boundary is the worse-looking number and the better
 estimate of onset.
 
-Which also explains a benchmark result I had found puzzling: the global aligner
-reaches the same mean as mine while landing fewer lines inside 0.5 s. Its
-resolution buys a shorter tail and costs it the body. That is not a bug in either
-tool. It is the trade.
+Which also explains the split decision in the table above. Vilm's character-level
+resolution buys the shorter tail — it can start a line inside a segment, so a
+badly-bounded segment hurts it less — and costs it the body, because every start
+it refines lands after the breath. My segment edges look cruder and sit closer to
+where the singing begins. Neither is a bug. It is the trade, and it runs in both
+directions.
 
 ## What would actually work
 
@@ -149,12 +189,14 @@ Not better search over similarity — that was the DP result. Not a prior derive
 from the aligner's own output — that was the timing-prior result; it predicts
 from previous placements, so it cannot correct a bad one, it anchors on it.
 
-It needs a signal that is *independent* of the alignment. The tool mentioned
-above does exactly this, and the design is worth naming: it runs two alignments,
-and only moves a start when they agree — specifically when both agree on where
-the phrase **ends** while disagreeing about where it begins, which is the
-signature of a line swallowed by the previous sustained vowel, as distinct from
-a line that simply drifted.
+It needs a signal that is *independent* of the alignment. Vilm does exactly this,
+and it is the best idea I found in anyone's code this month: it runs **two**
+alignments — a local one from the ASR, a global forced one over the whole song —
+and moves a start only when they agree. Specifically, when both agree on where
+the phrase **ends** while disagreeing about where it begins. That difference is
+the signature of a line swallowed by the previous sustained vowel, and it is
+distinguishable from a line that merely drifted, for which both ends move
+together. Two sources of evidence, and a rule for when to believe them.
 
 That is the right shape. It also costs a second aligner, which for this project
 means torch, which is the dependency this project exists to avoid. Identified,
