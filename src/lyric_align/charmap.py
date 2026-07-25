@@ -8,7 +8,7 @@ the (possibly misspelled) ASR words.
 from __future__ import annotations
 
 from .model import Word
-from .normalize import nchars
+from .normalize import cjk_ratio, nchars
 
 
 def char_timings(text: str, words: list[Word]) -> list[dict]:
@@ -37,4 +37,50 @@ def char_timings(text: str, words: list[Word]) -> list[dict]:
         out.append({"char": ch, "start": round(t_at(j), 3),
                     "end": round(t_at(j + 1), 3)})
         j += 1
+    return out
+
+
+def syllable_timings(text: str, chars: list[dict]) -> list[dict]:
+    """Group per-character timings into the units a karaoke format highlights.
+
+    Returns [{"text", "start", "end"}]. The grouping differs by script, because
+    what counts as a "syllable" to highlight does:
+
+    - Alphabetic text is grouped on whitespace, so "Amazing grace" highlights two
+      words rather than twelve letters.
+    - CJK text keeps one unit per character, which is how per-character karaoke
+      formats (QQ/NetEase style) treat Chinese and Japanese. Japanese lyrics often
+      contain spaces as phrasing, so splitting on them would give useless chunks.
+    """
+    if not chars:
+        return []
+    if cjk_ratio(text) >= 0.2:
+        return [{"text": c["char"], "start": c["start"], "end": c["end"]} for c in chars]
+
+    units: list[dict] = []
+    it = iter(chars)
+    current: list[dict] = []
+    for ch in text:
+        if ch.isspace():
+            if current:
+                units.append(current)
+                current = []
+            continue
+        try:
+            current.append(next(it))
+        except StopIteration:
+            break
+    if current:
+        units.append(current)
+
+    out = []
+    pos = 0
+    for group in units:
+        # Recover the original spelling: the char timings hold only the
+        # characters, so slice the source text by the same non-space run.
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        word = text[pos:pos + len(group)]
+        pos += len(group)
+        out.append({"text": word, "start": group[0]["start"], "end": group[-1]["end"]})
     return out
