@@ -415,6 +415,9 @@ above, "Through many dangers, toils and snares" was placed on the line
   Local accuracy does not compose in a greedy monotone scan, and that is why
   four unrelated interventions all land on roughly the same total.
 
+  The long version, with the diagnosis and the method notes, is
+  [Five ways I failed to fix a 3.6-second error](docs/five-ways-to-not-fix-an-aligner.md).
+
   The fourth is worth naming separately because it is what the one comparable
   tool does differently. Taking each line's start from the word its first
   character lands on — the sub-segment resolution a global character aligner
