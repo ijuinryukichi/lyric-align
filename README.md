@@ -122,7 +122,27 @@ lyric-align --from-labels out.labels.txt -f lrc -o final.lrc   # 3. back to LRC
 
 # web player
 lyric-align song.wav lyrics.txt -f vtt -o out.vtt
+
+# a file shaped for an AMLL TTML DB submission
+lyric-align song.wav lyrics.txt -f ttml -o out.ttml \
+  --meta musicName="Song" --meta artists="Artist" --meta album="Album" \
+  --meta ncmMusicId=1234567
 ```
+
+The [AMLL TTML DB](https://github.com/amll-dev/amll-ttml-db) is the largest open
+collection of word-by-word lyric files — tens of thousands of them, timed by
+hand. Its checker requires `musicName`, `artists`, `album` and at least one
+platform id (`ncmMusicId` / `appleMusicId` / `spotifyId` / `qqMusicId`), none of
+which can be inferred from audio and lyrics, so `--meta` is how you supply them.
+Everything else was already in the right shape: one `<span>` per CJK character,
+spaces as text nodes *between* spans (the form their spec calls most compliant),
+and every child timestamp contained by its parent.
+
+Checked, not assumed — the output parses with the AMLL reference parser
+(`@applemusic-like-lyrics/ttml`) and clears every rule in the database's own
+checker (`scripts/lyric_checker_bot/src/validator.rs`): 70 lines, 623 syllables,
+metadata read back intact. Without `--meta` the same file fails on exactly the
+four metadata rules, which is the point of the flag.
 
 Formats deliberately left out: UltraStar `.txt` and CDG need sung **pitch**, not
 just timing — [UltraSinger](https://github.com/rakuri255/UltraSinger) and

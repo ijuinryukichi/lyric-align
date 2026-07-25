@@ -177,7 +177,8 @@ def _ttml_ts(t: float) -> str:
     return f"{h:02d}:{m:02d}:{s:06.3f}"
 
 
-def to_ttml(aligned: list[AlignedLine], lang: str = "") -> str:
+def to_ttml(aligned: list[AlignedLine], lang: str = "",
+            meta: dict | None = None) -> str:
     """TTML with per-syllable spans — the shape Apple-style rich lyrics use.
 
     Word timings become nested <span> elements inside the line <p>, which is what
@@ -188,10 +189,11 @@ def to_ttml(aligned: list[AlignedLine], lang: str = "") -> str:
     spaces between units are emitted as text nodes outside the spans, which is
     the separator form that specification calls most compliant.
 
-    Only the metadata we actually know is written. A single ``ttm:agent`` is
-    declared and referenced because the spec requires one per line; the title,
-    artist and album an AMLL database submission also wants are left out rather
-    than invented, since this tool is given audio and lyrics and nothing else.
+    ``meta`` is written out as ``<amll:meta>`` entries. Nothing here is invented:
+    this tool is handed audio and lyrics, so the song title, artist, album and
+    platform id an AMLL database submission requires can only come from the
+    caller. Pass them and the file is submission-shaped; leave them out and you
+    get a valid TTML file without them.
     """
     body = []
     word_level = False
@@ -210,22 +212,42 @@ def to_ttml(aligned: list[AlignedLine], lang: str = "") -> str:
         else:
             inner = escape(a.line)
         body.append(f"{p_open}{inner}</p>")
+
+    placed = [a for a in aligned if not _skip(a)]
+    # The spec requires a parent's span to contain every child's, so the div and
+    # body take their bounds from the lines rather than from a nominal duration.
+    span_attrs = ""
+    if placed:
+        lo = min(a.start for a in placed)
+        hi = max(a.end for a in placed)
+        span_attrs = f' begin="{_ttml_ts(lo)}" end="{_ttml_ts(hi)}"'
+        body_dur = f' dur="{_ttml_ts(hi)}"'
+    else:
+        body_dur = ""
+
     lang_attr = f'\n    xml:lang="{escape(lang)}"' if lang else ""
+    amll_ns = ('\n    xmlns:amll="http://www.example.com/ns/amll"'
+               if meta else "")
+    meta_lines = "".join(
+        f'      <amll:meta key="{escape(str(k))}" value="{escape(str(v))}"/>\n'
+        for k, v in (meta or {}).items() if v not in (None, ""))
     timing = "Word" if word_level else "Line"
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<tt xmlns="http://www.w3.org/ns/ttml"\n'
         '    xmlns:ttm="http://www.w3.org/ns/ttml#metadata"\n'
         '    xmlns:itunes="http://music.apple.com/lyric-ttml-internal"'
+        f'{amll_ns}'
         f'{lang_attr}\n'
         f'    itunes:timing="{timing}">\n'
         '  <head>\n'
         '    <metadata>\n'
         '      <ttm:agent type="person" xml:id="v1"/>\n'
+        f'{meta_lines}'
         '    </metadata>\n'
         '  </head>\n'
-        '  <body>\n'
-        '    <div>\n'
+        f'  <body{body_dur}>\n'
+        f'    <div{span_attrs}>\n'
         + "\n".join(body) + "\n"
         '    </div>\n'
         '  </body>\n'
@@ -275,14 +297,14 @@ def to_ass(aligned: list[AlignedLine], karaoke: bool = False) -> str:
 
 
 FORMATTERS = {
-    "json": lambda a, karaoke=False, lang="": to_json(a),
-    "lrc": lambda a, karaoke=False, lang="": to_lrc(a),
-    "elrc": lambda a, karaoke=False, lang="": to_elrc(a),
-    "srt": lambda a, karaoke=False, lang="": to_srt(a),
-    "vtt": lambda a, karaoke=False, lang="": to_vtt(a),
-    "ass": lambda a, karaoke=False, lang="": to_ass(a, karaoke=karaoke),
-    "ttml": lambda a, karaoke=False, lang="": to_ttml(a, lang=lang),
-    "aud": lambda a, karaoke=False, lang="": to_aud(a),
+    "json": lambda a, karaoke=False, lang="", meta=None: to_json(a),
+    "lrc": lambda a, karaoke=False, lang="", meta=None: to_lrc(a),
+    "elrc": lambda a, karaoke=False, lang="", meta=None: to_elrc(a),
+    "srt": lambda a, karaoke=False, lang="", meta=None: to_srt(a),
+    "vtt": lambda a, karaoke=False, lang="", meta=None: to_vtt(a),
+    "ass": lambda a, karaoke=False, lang="", meta=None: to_ass(a, karaoke=karaoke),
+    "ttml": lambda a, karaoke=False, lang="", meta=None: to_ttml(a, lang=lang, meta=meta),
+    "aud": lambda a, karaoke=False, lang="", meta=None: to_aud(a),
 }
 
 # Formats whose whole point is per-syllable timing, so the CLI computes character

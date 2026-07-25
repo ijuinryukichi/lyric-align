@@ -82,6 +82,12 @@ def build_parser() -> argparse.ArgumentParser:
     out.add_argument("--karaoke", action="store_true",
                      help="per-character timings, for karaoke \\k tags (ass/json). "
                           "Always on for elrc/ttml, which are per-syllable formats")
+    out.add_argument("--meta", metavar="KEY=VALUE", action="append",
+                     help="metadata for the TTML head, repeatable. An AMLL "
+                          "database submission requires musicName, artists, album "
+                          "and one platform id (ncmMusicId / appleMusicId / "
+                          "spotifyId / qqMusicId); this tool only sees audio and "
+                          "lyrics, so those have to come from you")
     out.add_argument("-q", "--quiet", action="store_true", help="suppress progress reporting")
     out.add_argument("--from-labels", metavar="FILE",
                      help="read an Audacity label track instead of aligning, and "
@@ -267,22 +273,37 @@ def main(argv=None) -> int:
     return _write(args, fmt, targets, aligned, karaoke, log)
 
 
+def _parse_meta(pairs) -> dict:
+    """``--meta key=value`` into a dict, preserving the order they were given."""
+    meta = {}
+    for raw in pairs or []:
+        key, sep, value = raw.partition("=")
+        if not sep or not key.strip():
+            raise SystemExit(f"--meta expects key=value, got {raw!r}")
+        meta[key.strip()] = value.strip()
+    return meta
+
+
 def _write(args, fmt, targets, aligned, karaoke, log) -> int:
     # TTML carries the language; the ASR language code is the one we know.
     lang = args.language or ""
+    meta = _parse_meta(getattr(args, "meta", None))
 
     if fmt == "all":
         base = Path(args.output)
         base = base.with_name(base.name[:-len(base.suffix)] if base.suffix else base.name)
         for name in targets:
             path = base.with_name(base.name + EXTENSIONS[name])
-            path.write_text(FORMATTERS[name](aligned, karaoke=karaoke, lang=lang))
+            path.write_text(FORMATTERS[name](aligned, karaoke=karaoke, lang=lang,
+                                             meta=meta))
             log(f"wrote {path}")
     elif args.output:
-        Path(args.output).write_text(FORMATTERS[fmt](aligned, karaoke=karaoke, lang=lang))
+        Path(args.output).write_text(
+            FORMATTERS[fmt](aligned, karaoke=karaoke, lang=lang, meta=meta))
         log(f"wrote {args.output}")
     else:
-        sys.stdout.write(FORMATTERS[fmt](aligned, karaoke=karaoke, lang=lang))
+        sys.stdout.write(
+            FORMATTERS[fmt](aligned, karaoke=karaoke, lang=lang, meta=meta))
     return 0
 
 

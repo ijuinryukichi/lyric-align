@@ -129,6 +129,84 @@ def test_ttml_declares_an_agent_and_the_language():
     assert 'itunes:timing="Word"' in out
 
 
+def test_ttml_carries_the_metadata_an_amll_submission_needs():
+    # The AMLL TTML DB's checker (scripts/lyric_checker_bot/src/validator.rs)
+    # rejects a file that lacks musicName, artists, album, or any platform id.
+    # Those cannot be inferred from audio and lyrics, so they come from the
+    # caller — but when given, they have to land in the shape it reads.
+    meta = {"musicName": "黒砂の誓い", "artists": "屠龍",
+            "album": "SAMURAI SPIRITS DRILL", "spotifyId": "abc123"}
+    out = to_ttml([ja_line()], lang="ja", meta=meta)
+    assert 'xmlns:amll="http://www.example.com/ns/amll"' in out
+    for k, v in meta.items():
+        assert f'<amll:meta key="{k}" value="{v}"/>' in out
+    # Verified once against the AMLL reference parser: this exact shape reads
+    # back as {musicName, artists, album, spotifyId} and clears every rule the
+    # checker applies.
+
+
+def test_ttml_stays_clean_without_metadata():
+    # Nothing is invented when the caller says nothing: no amll namespace is
+    # declared if there is no amll metadata to put in it.
+    out = to_ttml([ja_line()], lang="ja")
+    assert "amll" not in out
+
+
+def test_ttml_body_and_div_contain_every_line():
+    # Same containment rule as spans-inside-p, one level up: a parent's span
+    # must contain its children's, or a strict player clamps them.
+    lines = [AlignedLine("島の左近", 3.0, 4.0, 0.9, True,
+                         char_timings("島の左近", WORDS_JA)),
+             AlignedLine("硫黄の島", 9.0, 12.5, 0.9, True, None)]
+    xml = to_ttml(lines)
+    div_begin, div_end = re.search(r'<div begin="([^"]+)" end="([^"]+)"', xml).groups()
+    assert div_begin == "00:00:03.000" and div_end == "00:00:12.500"
+    assert re.search(r'<body dur="([^"]+)"', xml).group(1) == div_end
+    for p_begin, p_end in re.findall(r'<p begin="([^"]+)" end="([^"]+)"', xml):
+        assert div_begin <= p_begin and p_end <= div_end
+
+
+def test_ttml_syllables_never_run_backwards():
+    # The checker rejects a syllable that starts before the previous one ended.
+    xml = to_ttml([en_line(), ja_line()])
+    for inner in re.findall(r"<p [^>]*>(.*?)</p>", xml):
+        spans = re.findall(r'<span begin="([^"]+)" end="([^"]+)"', inner)
+        for (_, prev_end), (begin, _) in zip(spans, spans[1:]):
+            assert begin >= prev_end
+
+
+def test_ttml_metadata_reaches_the_writer_from_the_cli(tmp_path, capsys):
+    from pathlib import Path
+
+    from lyric_align.cli import main
+    fix = Path(__file__).parent / "fixtures" / "segments_sample.json"
+    lyrics = tmp_path / "l.txt"
+    lyrics.write_text("あかねさす紫野ゆき\n")
+    out = tmp_path / "o.ttml"
+    assert main([str(lyrics), "--segments", str(fix), "--pairing", "1",
+                 "-f", "ttml", "-o", str(out),
+                 "--meta", "musicName=紫野", "--meta", "ncmMusicId=123"]) == 0
+    text = out.read_text()
+    assert '<amll:meta key="musicName" value="紫野"/>' in text
+    assert '<amll:meta key="ncmMusicId" value="123"/>' in text
+    capsys.readouterr()
+
+
+def test_ttml_metadata_rejects_a_malformed_pair(tmp_path, capsys):
+    from pathlib import Path
+
+    import pytest
+
+    from lyric_align.cli import main
+    fix = Path(__file__).parent / "fixtures" / "segments_sample.json"
+    lyrics = tmp_path / "l.txt"
+    lyrics.write_text("あかねさす紫野ゆき\n")
+    with pytest.raises(SystemExit):
+        main([str(lyrics), "--segments", str(fix), "-f", "ttml",
+              "-o", str(tmp_path / "o.ttml"), "--meta", "musicName"])
+    capsys.readouterr()
+
+
 def test_ttml_language_comes_from_the_cli(tmp_path, capsys):
     from lyric_align.cli import main
     from pathlib import Path
