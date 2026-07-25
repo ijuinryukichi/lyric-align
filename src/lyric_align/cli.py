@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import __version__
 from .anchor import align, interpolate_gaps
-from .formats import FORMATTERS
+from .formats import EXTENSIONS, FORMATTERS, NEEDS_SYLLABLES
 from .model import Segment
 from .normalize import CJK_THRESHOLD, LATIN_THRESHOLD, default_threshold
 
@@ -70,10 +70,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     out = p.add_argument_group("output")
     out.add_argument("-o", "--output", help="output path (default: stdout)")
-    out.add_argument("-f", "--format", default=None, choices=sorted(FORMATTERS),
-                     help="output format (default: infer from -o, else json)")
+    out.add_argument("-f", "--format", default=None,
+                     choices=sorted(FORMATTERS) + ["all"],
+                     help="output format (default: infer from -o, else json). "
+                          "'all' writes every format next to -o")
     out.add_argument("--karaoke", action="store_true",
-                     help="per-character timings, for karaoke \\k tags (ass/json)")
+                     help="per-character timings, for karaoke \\k tags (ass/json). "
+                          "Always on for elrc/ttml, which are per-syllable formats")
     out.add_argument("-q", "--quiet", action="store_true", help="suppress progress reporting")
 
     asr = p.add_argument_group(
@@ -171,6 +174,21 @@ def main(argv=None) -> int:
         print("error: provide AUDIO or --segments", file=sys.stderr)
         return 2
 
+    fmt = args.format
+    if fmt is None and args.output:
+        fmt = Path(args.output).suffix.lstrip(".").lower()
+    if fmt != "all" and fmt not in FORMATTERS:
+        fmt = "json"
+
+    if fmt == "all" and not args.output:
+        print("error: -f all needs -o to name the files to write", file=sys.stderr)
+        return 2
+
+    targets = sorted(FORMATTERS) if fmt == "all" else [fmt]
+    # Per-syllable formats are pointless without character timings, so turn them
+    # on for those rather than silently emitting line-level output.
+    karaoke = args.karaoke or bool(NEEDS_SYLLABLES.intersection(targets))
+
     threshold = args.threshold
     if threshold is None:
         threshold = default_threshold(lyrics)
@@ -179,16 +197,9 @@ def main(argv=None) -> int:
 
     aligned = align(segments, lyrics, pairing=args.pairing,
                     threshold=threshold, window=args.window,
-                    karaoke=args.karaoke)
+                    karaoke=karaoke)
     if args.interpolate:
         aligned = interpolate_gaps(aligned)
-
-    fmt = args.format
-    if fmt is None and args.output:
-        fmt = Path(args.output).suffix.lstrip(".").lower()
-    if fmt not in FORMATTERS:
-        fmt = "json"
-    text = FORMATTERS[fmt](aligned, karaoke=args.karaoke)
 
     matched = sum(1 for a in aligned if a.matched)
     log(f"aligned {matched}/{len(aligned)} lines")
@@ -215,11 +226,18 @@ def main(argv=None) -> int:
             log(f"only {matched}/{len(aligned)} lines matched from {len(segments)} "
                 f"segments — try " + ", or ".join(hints))
 
-    if args.output:
-        Path(args.output).write_text(text)
+    if fmt == "all":
+        base = Path(args.output)
+        base = base.with_name(base.name[:-len(base.suffix)] if base.suffix else base.name)
+        for name in targets:
+            path = base.with_name(base.name + EXTENSIONS[name])
+            path.write_text(FORMATTERS[name](aligned, karaoke=karaoke))
+            log(f"wrote {path}")
+    elif args.output:
+        Path(args.output).write_text(FORMATTERS[fmt](aligned, karaoke=karaoke))
         log(f"wrote {args.output}")
     else:
-        sys.stdout.write(text)
+        sys.stdout.write(FORMATTERS[fmt](aligned, karaoke=karaoke))
     return 0
 
 

@@ -61,6 +61,51 @@ works as-is. `segments.json` is a list of
 `{"start", "end", "text", "words": [{"start","end","word"}]}` — the shape any
 Whisper flavor produces.
 
+## Output: pick the format your next tool eats
+
+`-f all -o out` writes every format at once.
+
+| format | what it is | where it goes next |
+|---|---|---|
+| `lrc` | line-timed lyrics | music players; contributing to [LRCLIB](https://lrclib.net) |
+| `elrc` | LRC A2 — same file, inline per-syllable timestamps | word-by-word players (AIMP, QQ/NetEase/Kugou, Chronograph), karaoke editors |
+| `srt` | universal subtitles | `ffmpeg`, video editors, YouTube captions |
+| `vtt` | WebVTT | HTML5 `<track>`, web players |
+| `ass` | styling + `\k` karaoke sweeps | Aegisub, `ffmpeg` burn-in |
+| `ttml` | per-syllable rich lyrics | Apple-style / AMLL-ecosystem players |
+| `aud` | Audacity label track (`start⇥end⇥text`) | **fixing the timings by hand**; also plain TSV |
+| `json` | everything, including scores and unmatched lines | your own code |
+
+Per-syllable formats split by script: alphabetic text is grouped into words
+(`<00:06.60>Amazing <00:08.82>grace`), CJK stays one unit per character
+(`<00:21.78>治<00:21.94>部`), which is how per-character karaoke formats treat
+Japanese and Chinese.
+
+`lrc`/`elrc` cannot express an end time — the last syllable of a line has no
+close. Every other format carries the end times this aligner computes.
+
+### Recipes
+
+```bash
+# burn subtitles into a video
+ffmpeg -i video.mp4 -vf "ass=out.ass" -c:a copy out.mp4
+
+# karaoke sweep instead of plain lines
+lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
+
+# fix a mistimed line by hand: import out.labels.txt into Audacity
+#   (File > Import > Labels), drag it over the waveform, export the labels again
+lyric-align song.wav lyrics.txt -f aud -o out.labels.txt
+
+# web player
+lyric-align song.wav lyrics.txt -f vtt -o out.vtt
+```
+
+Formats deliberately left out: UltraStar `.txt` and CDG need sung **pitch**, not
+just timing — [UltraSinger](https://github.com/rakuri255/UltraSinger) and
+[karaoke-gen](https://github.com/nomadkaraoke/karaoke-gen) cover that. Apple
+Music and Spotify do not accept user-supplied lyric files at all.
+
 ### Try it in one minute
 
 Both the recording and the lyrics below are public domain, so this runs
