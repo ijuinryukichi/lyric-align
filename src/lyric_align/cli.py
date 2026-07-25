@@ -38,33 +38,76 @@ def load_segments(path: Path) -> list[Segment]:
     return [Segment.from_dict(d) for d in json.loads(path.read_text())]
 
 
+DESCRIPTION = """\
+Place known lyrics on an audio timeline.
+
+You already have the correct lyrics; you only need the times. lyric-align
+anchors your lyric lines onto ASR word timings by character-level fuzzy
+matching — built for space-less languages (Japanese, Chinese) and for sung
+vocals, where the ASR mis-hears the words but still times them well.
+
+Lines it cannot confidently place are reported as unmatched instead of being
+given an invented timestamp.
+
+examples:
+  lyric-align song.wav lyrics.txt -o out.lrc              transcribe and align
+  lyric-align song.wav lyrics.txt --separate -o out.lrc   split vocals first (better on a mix)
+  lyric-align song.mp3 lyrics.txt --language en --no-vad  English, sung slowly
+  lyric-align --segments segs.json lyrics.txt -f ass --karaoke
+
+LYRICS is plain text, one lyric line per line. Blank lines, # comments and
+section markers ([Verse 1], [Hook]) are skipped, so a pasted lyric sheet works
+as-is.
+"""
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="lyric-align", description=__doc__,
+    p = argparse.ArgumentParser(prog="lyric-align", description=DESCRIPTION,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("audio", nargs="?", help="audio file (omit if --segments given)")
     p.add_argument("lyrics", help="plain-text lyrics, one line per line")
-    p.add_argument("-o", "--output", help="output path (default: stdout)")
-    p.add_argument("-f", "--format", default=None,
-                   choices=sorted(FORMATTERS), help="output format (default: infer from -o, else json)")
-    p.add_argument("--segments", help="pre-computed segments JSON (skip ASR)")
-    p.add_argument("--separate", action="store_true",
-                   help="split the vocal stem with Demucs first (needs [separate]); "
-                        "slow but clearly more accurate on a full mix")
-    p.add_argument("--pairing", type=int, default=2,
-                   help="lyric lines per stanza unit (default 2; use 1 if ASR splits per line)")
-    p.add_argument("--threshold", type=float, default=0.25)
-    p.add_argument("--window", type=int, default=4)
-    p.add_argument("--karaoke", action="store_true", help="per-character timings (ass/json)")
-    p.add_argument("--interpolate", action="store_true",
-                   help="fill unmatched lines by interpolation")
-    p.add_argument("--language", default="ja")
-    p.add_argument("--model", default="medium", help="faster-whisper model size")
-    p.add_argument("--device", default="cpu")
-    p.add_argument("--no-vad", dest="vad", action="store_false",
-                   help="disable the ASR voice-activity filter. The filter helps on dense "
-                        "delivery (rap) but silences slow, sustained singing — if you get "
-                        "few or no segments, try this first")
-    p.add_argument("-q", "--quiet", action="store_true", help="suppress progress reporting")
+
+    out = p.add_argument_group("output")
+    out.add_argument("-o", "--output", help="output path (default: stdout)")
+    out.add_argument("-f", "--format", default=None, choices=sorted(FORMATTERS),
+                     help="output format (default: infer from -o, else json)")
+    out.add_argument("--karaoke", action="store_true",
+                     help="per-character timings, for karaoke \\k tags (ass/json)")
+    out.add_argument("-q", "--quiet", action="store_true", help="suppress progress reporting")
+
+    asr = p.add_argument_group(
+        "transcription", "ignored when --segments is given")
+    asr.add_argument("--segments", help="pre-computed segments JSON (skip ASR entirely)")
+    asr.add_argument("--separate", action="store_true",
+                     help="split the vocal stem with Demucs first (needs the [separate] "
+                          "extra). Slow, cached, and markedly more accurate on a full mix")
+    asr.add_argument("--language", default="ja",
+                     help="ASR language code (default: %(default)s — set this for "
+                          "anything but Japanese)")
+    asr.add_argument("--model", default="medium",
+                     help="faster-whisper model size (default: %(default)s)")
+    asr.add_argument("--device", default="cpu",
+                     help="ASR compute device: cpu or cuda (default: %(default)s). "
+                          "Apple Silicon has no ctranslate2 GPU backend — keep cpu")
+    asr.add_argument("--no-vad", dest="vad", action="store_false",
+                     help="disable the voice-activity filter. The filter helps on dense "
+                          "delivery (rap) but silences slow, sustained singing — if you "
+                          "get few or no segments, try this first")
+
+    al = p.add_argument_group("alignment")
+    al.add_argument("--pairing", type=int, default=2,
+                    help="lyric lines per stanza unit matched to one segment "
+                         "(default: %(default)s; use 1 if the ASR splits per line)")
+    al.add_argument("--interpolate", action="store_true",
+                    help="give unmatched lines guessed timestamps between their "
+                         "neighbours (they stay flagged as unmatched)")
+    al.add_argument("--threshold", type=float, default=0.25,
+                    help="minimum character similarity to accept a match, 0-1 "
+                         "(default: %(default)s; raise it to reject dubious matches)")
+    al.add_argument("--window", type=int, default=4,
+                    help="how many segments ahead to search for each line "
+                         "(default: %(default)s; raise it if the ASR drops segments)")
+
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
 
