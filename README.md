@@ -322,6 +322,42 @@ above, "Through many dangers, toils and snares" was placed on the line
   A prior that would actually work has to come from a signal independent of the
   aligner's output — audio-side section detection, say — which is a different
   tool with a much heavier dependency than a stdlib core.
+- **Correcting one placement tends to break the next one.** The first track's
+  worst case (3.6 s) has a fully diagnosed cause: `SequenceMatcher.ratio()`
+  divides by *both* strings' lengths, so a short segment matching only the
+  second half of a two-line unit outscores the longer segment that actually
+  starts it (0.615 vs 0.304; concatenating both gives 0.644, and the right
+  answer wins). Three independent fixes follow from that, and a fourth from how
+  a global character aligner gets sub-segment resolution. All four fix the
+  outlier. All four cost more elsewhere than they return:
+
+  | candidate selection | 過ぎたるもの mean / worst / ≤0.5 s | 黒砂 matched / mean / ≤0.5 s |
+  |---|---|---|
+  | forward scan (shipped) | **0.50 s** / 3.6 s / **14/20** | **33/33** / **0.94 s** / **26/33** |
+  | span up to 2 segments | 0.34 s / **0.7 s** / 15/20 | 29/33 / 2.13 s / 23/33 |
+  | score the unit's opening, not the whole unit | 0.34 s / **0.7 s** / 15/20 | 31/33 / 1.22 s / 23/33 |
+  | veto candidates matching only the unit's tail | 0.33 s / **0.7 s** / 14/20 | 32/33 / 1.74 s / 19/33 |
+  | ↑ but only on lines that never repeat | 0.34 s / **0.7 s** / 15/20 | 32/33 / 1.00 s / 25/33 |
+
+  The mechanism is the scan itself. `idx` advances to just past whatever was
+  chosen, so *every* neighbour is downstream of *every* decision. Gains and
+  losses arrive in adjacent pairs: the last row above fixes 2.30 s → 0.02 s at
+  2:20 on the second track and breaks 0.32 s → 3.70 s at 2:26, six seconds
+  later. Across both tracks it nets to two lines fixed, one broken, one turned
+  into a gap, on 53 measured lines — which is not an improvement, it is noise.
+  Local accuracy does not compose in a greedy monotone scan, and that is why
+  four unrelated interventions all land on roughly the same total.
+
+  The fourth is worth naming separately because it is what the one comparable
+  tool does differently. Taking each line's start from the word its first
+  character lands on — the sub-segment resolution a global character aligner
+  buys — measured *worse on both tracks* (mean 0.50 → 0.79 s and 0.94 → 1.26 s;
+  ≤0.5 s 14/20 → 9/20 and 26/33 → 20/33). Placements are already late (signed
+  mean +0.46 s and +0.21 s), and refining into the segment can only add
+  lateness. A sung phrase begins at its breath and attack, before the first word
+  the ASR is willing to timestamp, so the segment boundary is the better
+  estimate of onset — and the same thing that buys a global aligner a shorter
+  tail costs it the body.
 - **Slow, sustained singing is much harder than rap** — hymns, ballads and
   school songs stretch vowels until the ASR stops producing usable segments.
   Reach for `--no-vad` first (see the one-minute example); dense, consonant-rich
