@@ -79,10 +79,22 @@ Whisper flavor produces.
 Per-syllable formats split by script: alphabetic text is grouped into words
 (`<00:06.60>Amazing <00:08.82>grace`), CJK stays one unit per character
 (`<00:21.78>治<00:21.94>部`), which is how per-character karaoke formats treat
-Japanese and Chinese.
+Japanese and Chinese. The separator between units is taken from the source line
+rather than inferred, so a Japanese line that carries a phrasing space
+(`硫黄が満ちる 道の奥`) rebuilds character-for-character instead of gaining a
+space between every character.
 
 `lrc`/`elrc` cannot express an end time — the last syllable of a line has no
 close. Every other format carries the end times this aligner computes.
+
+The `ttml` output is checked against the AMLL reference parser
+([`@applemusic-like-lyrics/ttml`](https://github.com/amll-dev/applemusic-like-lyrics)),
+not just against the XML schema: lines, per-unit text and millisecond timings
+survive a real parse unchanged, in both scripts. It declares a single
+`ttm:agent` because the spec wants one per line, and carries `xml:lang` from
+`--language`. The title/artist/album an AMLL *database submission* also wants
+are deliberately absent — this tool is handed audio and lyrics and nothing else,
+so it does not invent them.
 
 ### Recipes
 
