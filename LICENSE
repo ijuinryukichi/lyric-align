@@ -19,19 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Scope of this license
-
-The MIT license above applies to the software in this repository: the source
-code, the tests and the documentation.
-
-It does not apply to the song lyrics quoted in this repository. Short lyric
-fragments appear in the test fixtures as sample input. They are the copyrighted
-work of their author (屠龍 / TORYU) and are reproduced here as test data only;
-no license to reuse them is granted by this file.
-
-The exception is examples/amazing_grace.txt, which is a public-domain hymn text
-and carries no such restriction. It is the example used in the README so that
-the walkthrough can be reproduced by anyone.

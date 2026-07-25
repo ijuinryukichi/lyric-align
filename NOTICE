@@ -1,0 +1,15 @@
+Scope of the MIT license
+========================
+
+The MIT license in LICENSE applies to the software in this repository: the
+source code, the tests and the documentation.
+
+It does not grant any rights to the song lyrics quoted here. Short lyric
+fragments appear in the test fixtures as sample input. They are the
+copyrighted work of their author (屠龍 / TORYU), reproduced as test data only.
+Reusing them is not covered by LICENSE.
+
+The exception is examples/amazing_grace.txt. "Amazing Grace" is a public-domain
+hymn, and the recording the README points at is a public-domain work of the
+United States Air Force Reserve Band. That is why the README walkthrough uses
+it: anyone can reproduce that run end to end.

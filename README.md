@@ -229,8 +229,8 @@ from the same catalogue: [六の巷](https://youtu.be/OIonX0bZjmI),
 [永遠の炎](https://youtu.be/lZIW59t9O-M) — [toryu.tokyo](https://toryu.tokyo).
 
 Short lyric fragments from those tracks appear in the test fixtures. They are the
-author's own work and are **not** covered by this project's MIT license; see
-[LICENSE](LICENSE). The runnable example (`examples/amazing_grace.txt`) is public
+author's own work and are **not** covered by this project's MIT license — see
+[NOTICE](NOTICE). The runnable example (`examples/amazing_grace.txt`) is public
 domain, so anyone can reproduce it end to end.
 
 ## Accuracy
@@ -341,4 +341,5 @@ with a CJK-first matcher and honest-gap semantics.
 
 ## License
 
-MIT
+MIT, for the code, tests and documentation. The song lyrics quoted in the test
+fixtures are not covered by it — see [NOTICE](NOTICE).
