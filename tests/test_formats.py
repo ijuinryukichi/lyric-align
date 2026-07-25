@@ -67,6 +67,81 @@ def test_ttml_wraps_syllables_in_spans_and_escapes():
     assert out.count("<span") >= 2
 
 
+def _ttml_lines(xml: str) -> list[str]:
+    """Rebuild each line from its spans the way a TTML consumer does."""
+    out = []
+    for inner in re.findall(r"<p [^>]*>(.*?)</p>", xml):
+        out.append(re.sub(r"</?span[^>]*>", "", inner))
+    return out
+
+
+def _elrc_line(elrc: str) -> str:
+    """Strip the line timestamp and the inline word timestamps from one eLRC line."""
+    body = re.sub(r"^\[\d\d:\d\d\.\d\d\]", "", elrc.strip())
+    return re.sub(r"<\d\d:\d\d\.\d\d>", "", body)
+
+
+def test_ttml_and_elrc_rebuild_the_source_line_exactly():
+    # A Japanese line carries a phrasing space *and* is one unit per character.
+    # Deciding the separator from the line ("does it contain a space?") breaks
+    # exactly here: it puts a space between every character and loses the real
+    # one. The separator has to come from the source text, per unit.
+    line = "硫黄が満ちる 道の奥"
+    a = AlignedLine(line, 0.0, 1.0, 0.9, True, char_timings(line, WORDS_JA))
+    assert _ttml_lines(to_ttml([a])) == [line]
+    assert _elrc_line(to_elrc([a])) == line
+
+    en = "Amazing grace"
+    b = AlignedLine(en, 0.0, 1.0, 0.9, True, char_timings(en, WORDS_EN))
+    assert _ttml_lines(to_ttml([b])) == [en]
+    assert _elrc_line(to_elrc([b])) == en
+
+
+def test_ttml_spans_stay_inside_their_line():
+    # TTML requires a child's span to be contained by its parent's; a strict
+    # player otherwise clamps or drops the tail.
+    for a in (en_line(), ja_line()):
+        xml = to_ttml([a])
+        for p_begin, p_end, inner in re.findall(
+                r'<p begin="([^"]+)" end="([^"]+)"[^>]*>(.*?)</p>', xml):
+            spans = re.findall(r'begin="([^"]+)" end="([^"]+)"', inner)
+            assert spans
+            assert spans[0][0] >= p_begin
+            assert spans[-1][1] <= p_end
+
+
+def test_align_widens_a_line_to_contain_its_characters():
+    # faster-whisper does not guarantee segment.end == last word end.
+    from lyric_align.anchor import align
+    from lyric_align.model import Segment
+    seg = Segment(0.0, 1.0, "amazing grace",
+                  [Word(0.0, 0.5, "amazing"), Word(0.5, 1.6, "grace")])
+    a = align([seg], ["Amazing grace"], pairing=1, karaoke=True)[0]
+    assert a.chars[-1]["end"] <= a.end
+    assert a.chars[0]["start"] >= a.start
+
+
+def test_ttml_declares_an_agent_and_the_language():
+    out = to_ttml([en_line()], lang="en")
+    assert '<ttm:agent type="person" xml:id="v1"/>' in out
+    assert 'ttm:agent="v1"' in out
+    assert 'xml:lang="en"' in out
+    assert 'itunes:timing="Word"' in out
+
+
+def test_ttml_language_comes_from_the_cli(tmp_path, capsys):
+    from lyric_align.cli import main
+    from pathlib import Path
+    fix = Path(__file__).parent / "fixtures" / "segments_sample.json"
+    lyrics = tmp_path / "l.txt"
+    lyrics.write_text("あかねさす紫野ゆき\n")
+    out = tmp_path / "o.ttml"
+    assert main([str(lyrics), "--segments", str(fix), "--pairing", "1",
+                 "--language", "ja", "-f", "ttml", "-o", str(out)]) == 0
+    assert 'xml:lang="ja"' in out.read_text()
+    capsys.readouterr()
+
+
 def test_unmatched_lines_are_absent_from_every_text_format():
     lines = [en_line(), AlignedLine("dropped line", None, None, 0.1, False, None)]
     for name, fmt in FORMATTERS.items():

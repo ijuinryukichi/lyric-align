@@ -67,44 +67,51 @@ def char_timings(text: str, words: list[Word]) -> list[dict]:
 def syllable_timings(text: str, chars: list[dict]) -> list[dict]:
     """Group per-character timings into the units a karaoke format highlights.
 
-    Returns [{"text", "start", "end"}]. The grouping differs by script, because
-    what counts as a "syllable" to highlight does:
+    Returns ``[{"text", "start", "end", "space_after"}]``. The grouping differs
+    by script, because what counts as a "syllable" to highlight does:
 
     - Alphabetic text is grouped on whitespace, so "Amazing grace" highlights two
       words rather than twelve letters.
     - CJK text keeps one unit per character, which is how per-character karaoke
       formats (QQ/NetEase style) treat Chinese and Japanese. Japanese lyrics often
       contain spaces as phrasing, so splitting on them would give useless chunks.
+
+    ``space_after`` records whether whitespace followed the unit *in the source
+    line*, so a formatter can rebuild the line exactly instead of guessing a
+    separator. The guess is what breaks CJK: a Japanese line is one unit per
+    character yet often carries a phrasing space, so any line-wide "is this
+    spaced text?" test either inserts a space between every character or drops
+    the phrasing space entirely.
     """
     if not chars:
         return []
-    if cjk_ratio(text) >= 0.2:
-        return [{"text": c["char"], "start": c["start"], "end": c["end"]} for c in chars]
+    per_char = cjk_ratio(text) >= 0.2
 
-    units: list[dict] = []
+    units: list[list] = []          # [source_text, [timings], space_after]
+    buf_text, buf_times = "", []
+
+    def flush() -> None:
+        nonlocal buf_text, buf_times
+        if buf_times:
+            units.append([buf_text, buf_times, False])
+        buf_text, buf_times = "", []
+
     it = iter(chars)
-    current: list[dict] = []
     for ch in text:
         if ch.isspace():
-            if current:
-                units.append(current)
-                current = []
+            flush()
+            if units:
+                units[-1][2] = True
             continue
         try:
-            current.append(next(it))
+            t = next(it)
         except StopIteration:
             break
-    if current:
-        units.append(current)
+        buf_text += ch
+        buf_times.append(t)
+        if per_char:
+            flush()
+    flush()
 
-    out = []
-    pos = 0
-    for group in units:
-        # Recover the original spelling: the char timings hold only the
-        # characters, so slice the source text by the same non-space run.
-        while pos < len(text) and text[pos].isspace():
-            pos += 1
-        word = text[pos:pos + len(group)]
-        pos += len(group)
-        out.append({"text": word, "start": group[0]["start"], "end": group[-1]["end"]})
-    return out
+    return [{"text": t, "start": ts[0]["start"], "end": ts[-1]["end"],
+             "space_after": sp} for t, ts, sp in units]

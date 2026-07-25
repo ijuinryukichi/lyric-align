@@ -35,6 +35,23 @@ def _stanzas(lines: list[str], pairing: int) -> list[list[str]]:
     return [lines[i:i + pairing] for i in range(0, len(lines), pairing)]
 
 
+def _containing(start: float, end: float, chars: list[dict] | None) -> tuple[float, float]:
+    """Widen a line span so it contains its own character timings.
+
+    A line takes its span from the segment, but the characters are interpolated
+    across the *word* timings, and faster-whisper does not guarantee that a
+    segment's end equals its last word's end. When it does not, the final
+    character runs past the line — which TTML forbids outright ("the timestamp
+    of a child element must be completely contained within the timestamp of its
+    parent") and which makes a strict player clamp or drop the tail.
+
+    The word timings are the precise signal here, so the line yields to them.
+    """
+    if not chars:
+        return start, end
+    return min(start, chars[0]["start"]), max(end, chars[-1]["end"])
+
+
 def align(
     segments: list[Segment],
     lyrics: list[str],
@@ -81,15 +98,17 @@ def align(
                 # Single line, or no word timings: use the segment span as-is.
                 for k, line in enumerate(unit):
                     chars = char_timings(line, seg.words) if (karaoke and k == 0) else None
-                    results.append(AlignedLine(line, seg.start, seg.end,
+                    start, end = _containing(seg.start, seg.end, chars)
+                    results.append(AlignedLine(line, start, end,
                                                best_score, True, chars))
             else:
                 groups = split_words_by_breath(seg.words, unit)
                 for line, grp in zip(unit, groups):
                     if grp:
                         chars = char_timings(line, grp) if karaoke else None
-                        results.append(AlignedLine(line, grp[0].start,
-                                                   grp[-1].end, best_score, True, chars))
+                        start, end = _containing(grp[0].start, grp[-1].end, chars)
+                        results.append(AlignedLine(line, start, end,
+                                                   best_score, True, chars))
                     else:
                         results.append(AlignedLine(line, seg.start, seg.end,
                                                    best_score, True, None))

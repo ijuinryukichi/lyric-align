@@ -226,18 +226,21 @@ def main(argv=None) -> int:
             log(f"only {matched}/{len(aligned)} lines matched from {len(segments)} "
                 f"segments — try " + ", or ".join(hints))
 
+    # TTML carries the language; the ASR language code is the one we know.
+    lang = args.language or ""
+
     if fmt == "all":
         base = Path(args.output)
         base = base.with_name(base.name[:-len(base.suffix)] if base.suffix else base.name)
         for name in targets:
             path = base.with_name(base.name + EXTENSIONS[name])
-            path.write_text(FORMATTERS[name](aligned, karaoke=karaoke))
+            path.write_text(FORMATTERS[name](aligned, karaoke=karaoke, lang=lang))
             log(f"wrote {path}")
     elif args.output:
-        Path(args.output).write_text(FORMATTERS[fmt](aligned, karaoke=karaoke))
+        Path(args.output).write_text(FORMATTERS[fmt](aligned, karaoke=karaoke, lang=lang))
         log(f"wrote {args.output}")
     else:
-        sys.stdout.write(FORMATTERS[fmt](aligned, karaoke=karaoke))
+        sys.stdout.write(FORMATTERS[fmt](aligned, karaoke=karaoke, lang=lang))
     return 0
 
 
