@@ -19,6 +19,7 @@ from . import __version__
 from .anchor import align, interpolate_gaps
 from .formats import FORMATTERS
 from .model import Segment
+from .normalize import CJK_THRESHOLD, LATIN_THRESHOLD, default_threshold
 
 SECTION_MARKER = re.compile(r"^[\[(](?:[^\[\]()]{0,40})[\])]$")
 
@@ -101,9 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
     al.add_argument("--interpolate", action="store_true",
                     help="give unmatched lines guessed timestamps between their "
                          "neighbours (they stay flagged as unmatched)")
-    al.add_argument("--threshold", type=float, default=0.25,
-                    help="minimum character similarity to accept a match, 0-1 "
-                         "(default: %(default)s; raise it to reject dubious matches)")
+    al.add_argument("--threshold", type=float, default=None,
+                    help="minimum character similarity to accept a match, 0-1. Default "
+                         f"depends on the script of the lyrics: {CJK_THRESHOLD} for "
+                         f"Japanese/Chinese, {LATIN_THRESHOLD} for alphabetic scripts, "
+                         "where unrelated sentences score far higher by chance")
     al.add_argument("--window", type=int, default=4,
                     help="how many segments ahead to search for each line "
                          "(default: %(default)s; raise it if the ASR drops segments)")
@@ -168,8 +171,14 @@ def main(argv=None) -> int:
         print("error: provide AUDIO or --segments", file=sys.stderr)
         return 2
 
+    threshold = args.threshold
+    if threshold is None:
+        threshold = default_threshold(lyrics)
+        log(f"match threshold: {threshold} "
+            f"({'CJK' if threshold == CJK_THRESHOLD else 'alphabetic'} script)")
+
     aligned = align(segments, lyrics, pairing=args.pairing,
-                    threshold=args.threshold, window=args.window,
+                    threshold=threshold, window=args.window,
                     karaoke=args.karaoke)
     if args.interpolate:
         aligned = interpolate_gaps(aligned)
@@ -192,6 +201,19 @@ def main(argv=None) -> int:
         log(f"unmatched{filled} — check these lines:")
         for i, a in unmatched:
             log(f"  line {i}: sim {a.score:.2f}  {a.line}")
+
+    # A poor match rate almost always means the transcription was starved, not
+    # that the lyrics are wrong — say so, because the cause is not guessable
+    # from the output. (Only ASR runs can be diagnosed this way.)
+    if not args.segments and matched < len(aligned) * 0.6:
+        hints = []
+        if args.vad:
+            hints.append("--no-vad (the voice-activity filter silences slow singing)")
+        if not args.separate:
+            hints.append("--separate (a full mix hides the vocal from the ASR)")
+        if hints:
+            log(f"only {matched}/{len(aligned)} lines matched from {len(segments)} "
+                f"segments — try " + ", or ".join(hints))
 
     if args.output:
         Path(args.output).write_text(text)
