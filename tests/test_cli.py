@@ -68,3 +68,33 @@ def test_cli_rejects_empty_lyrics(tmp_path, capsys):
     lyrics = write_lyrics(tmp_path, "[Verse 1]\n\n")
     assert main([str(lyrics), "--segments", str(FIX)]) == 2
     assert "no lyric lines" in capsys.readouterr().err
+
+
+def test_cli_reports_the_pairing_it_picked(tmp_path, capsys):
+    from lyric_align.cli import main
+    lyrics = tmp_path / "l.txt"
+    lyrics.write_text("あかねさす紫野ゆき\n標野ゆき野守は見ずや\n")
+    assert main([str(lyrics), "--segments", str(FIX), "-o", str(tmp_path / "o.json")]) == 0
+    err = capsys.readouterr().err
+    assert "pairing:" in err and "auto" in err
+
+
+def test_cli_accepts_an_explicit_pairing(tmp_path, capsys):
+    from lyric_align.cli import main
+    lyrics = tmp_path / "l.txt"
+    lyrics.write_text("あかねさす紫野ゆき\n")
+    assert main([str(lyrics), "--segments", str(FIX), "--pairing", "1",
+                 "-o", str(tmp_path / "o.json")]) == 0
+    assert "auto" not in capsys.readouterr().err
+
+
+def test_cli_rejects_a_nonsense_pairing(tmp_path, capsys):
+    import pytest
+
+    from lyric_align.cli import main
+    lyrics = tmp_path / "l.txt"
+    lyrics.write_text("あかねさす紫野ゆき\n")
+    with pytest.raises(SystemExit):
+        main([str(lyrics), "--segments", str(FIX), "--pairing", "two",
+              "-o", str(tmp_path / "o.json")])
+    capsys.readouterr()
