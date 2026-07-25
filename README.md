@@ -1,5 +1,10 @@
 # lyric-align
 
+[![PyPI](https://img.shields.io/pypi/v/lyric-align)](https://pypi.org/project/lyric-align/)
+[![Python](https://img.shields.io/pypi/pyversions/lyric-align)](https://pypi.org/project/lyric-align/)
+[![tests](https://github.com/ijuinryukichi/lyric-align/actions/workflows/ci.yml/badge.svg)](https://github.com/ijuinryukichi/lyric-align/actions/workflows/ci.yml)
+[![License](https://img.shields.io/pypi/l/lyric-align)](LICENSE)
+
 **You already have the correct lyrics. You only need the *times*.**
 
 `lyric-align` anchors known lyric lines onto ASR word timings by *character-level*

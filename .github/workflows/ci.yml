@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both ends of the supported range, plus the current default. The core
+        # has no dependencies, so this is the whole compatibility surface.
+        python-version: ["3.9", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv --python ${{ matrix.python-version }}
+      - run: uv pip install pytest
+      - run: uv run --no-project pytest -q
