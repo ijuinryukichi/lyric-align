@@ -263,6 +263,44 @@ granularity) reproduces this: **33/33 matched, median |err| 0.30 s**, 26/33
 within 0.5 s. Its mean of 0.94 s comes almost entirely from four outliers, all on
 the *same* line — see below.
 
+### Coming from stable-ts?
+
+[stable-ts](https://github.com/jianfch/stable-ts) was archived on 2026-05-30
+(last PyPI release 2025-08). It did this job well, and this is not a claim to
+have beaten it — head to head above, its `align()` is slightly *ahead*: 20/20
+lines at 0.42 s mean against 19/20 at 0.50 s, with both sitting on the ±0.5 s
+noise floor of the human ground truth. What differs is everything around the
+accuracy:
+
+| | stable-ts `align()` | lyric-align |
+|---|---|---|
+| status | archived 2026-05 | maintained |
+| install | `torch` + `torchaudio` + `openai-whisper`, unconditionally | **nothing** for the core; `ctranslate2` (via `faster-whisper`) only if you want it to transcribe |
+| matching | word-level forced alignment | character-level fuzzy anchor — no whitespace assumption |
+| threshold | — | script-aware: 0.25 for CJK, 0.50 for alphabetic |
+| a line it cannot place | always given a time | reported as unmatched |
+| output | SRT, VTT, ASS, TSV, JSON | LRC, eLRC, SRT, VTT, ASS, TTML, JSON, Audacity labels |
+
+```python
+# stable-ts
+import stable_whisper
+model = stable_whisper.load_model("medium")
+result = model.align(audio, "\n".join(lines), language="ja", original_split=True)
+result.to_srt_vtt("out.srt")
+```
+
+```bash
+# lyric-align — format inferred from the extension
+lyric-align audio.wav lyrics.txt --language ja -o out.srt
+```
+
+The last row is the one to understand before switching. A forced aligner emits a
+time for every line, so when it fails it fails *silently* — a line drifts into
+the intro and nothing tells you. `lyric-align` leaves that line empty instead.
+On error-prone sung ASR that is the point, but if you need a fully populated
+timeline anyway, `--interpolate` fills the gaps and keeps `matched: false` on
+them so you can still tell which ones were guessed.
+
 ### Match threshold is script-aware
 
 A line is accepted when its character similarity clears a threshold, and the
@@ -380,9 +418,8 @@ above, "Through many dangers, toils and snares" was placed on the line
   blaming the alignment.
 
 The nearest match, [stable-ts](https://github.com/jianfch/stable-ts), was
-**archived in 2026-05**. `lyric-align` is a lighter (`ctranslate2`, not
-`torch`), maintained take on the same "I have the text, I need the times" job,
-with a CJK-first matcher and honest-gap semantics.
+**archived in 2026-05** — see [Coming from stable-ts?](#coming-from-stable-ts)
+for what carries over and what does not.
 
 ## License
 
