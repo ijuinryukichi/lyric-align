@@ -76,11 +76,8 @@ lyric-align amazing_grace.mp3 examples/amazing_grace.txt \
 
 ```
 segments: 12
-aligned 9/12 lines
-unmatched (omitted from output) — check these lines:
-  line 10: sim 0.00  I have already come
-  line 11: sim 0.00  Tis grace hath brought me safe thus far
-  line 12: sim 0.00  And grace will lead me home
+match threshold: 0.5 (alphabetic script)
+aligned 12/12 lines
 ```
 
 ```
@@ -88,6 +85,9 @@ unmatched (omitted from output) — check these lines:
 [00:14.30]That saved a wretch like me
 [00:23.70]I once was lost, but now am found
 [00:34.52]Was blind, but now I see
+...
+[01:46.24]We've no less days to sing God's praise
+[01:57.46]Than when we first begun
 ```
 
 Note `--no-vad`: this is a slow hymn, and the ASR's voice-activity filter
@@ -95,6 +95,15 @@ mistakes sustained singing for silence. With the filter on, the same file yields
 **one** garbage segment for 130 seconds; with it off, twelve clean ones. Keep the
 filter for rap, drop it for anything sung slowly. (`--pairing 1` because this ASR
 already split one lyric line per segment.)
+
+Drop `--no-vad` and you can watch the honest-gap contract hold: every line is
+reported unmatched, nothing is written, and the cause is named.
+
+```
+only 0/12 lines matched from 1 segments — try --no-vad (the voice-activity
+filter silences slow singing), or --separate (a full mix hides the vocal
+from the ASR)
+```
 
 ### Feed it a vocal stem
 
@@ -167,6 +176,21 @@ A second track (3-minute Japanese rap, 33 human-marked lines, 1 s ground-truth
 granularity) reproduces this: **33/33 matched, median |err| 0.30 s**, 26/33
 within 0.5 s. Its mean of 0.94 s comes almost entirely from four outliers, all on
 the *same* line — see below.
+
+### Match threshold is script-aware
+
+A line is accepted when its character similarity clears a threshold, and the
+right floor depends on how many characters the language has to choose from. So
+the default is picked from the lyrics themselves (`--threshold` overrides it):
+
+| script | default | why |
+|---|---|---|
+| Japanese / Chinese | 0.25 | true matches against error-prone sung ASR drop as low as 0.26 |
+| alphabetic | 0.50 | two *unrelated* English sentences already score 0.28–0.34 |
+
+Using the CJK floor on English silently invents matches — measured on the hymn
+above, "Through many dangers, toils and snares" was placed on the line
+"We've no less days to sing God's praise" (similarity 0.34).
 
 ## Known limits
 
