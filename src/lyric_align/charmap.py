@@ -11,10 +11,18 @@ from .model import Word
 from .normalize import cjk_ratio, nchars
 
 
+MIN_CHAR_DUR = 0.01
+
+
 def char_timings(text: str, words: list[Word]) -> list[dict]:
     """Return [{"char", "start", "end"}] for each non-space character in text.
 
     Spaces are skipped (no karaoke syllable). If `words` is empty, returns [].
+
+    Durations are kept strictly positive and non-overlapping: proportional
+    interpolation plus rounding to milliseconds can otherwise collapse a
+    character to zero length, which downstream means a `\\k0` sweep or a TTML span
+    with begin == end.
     """
     if not words:
         return []
@@ -29,14 +37,30 @@ def char_timings(text: str, words: list[Word]) -> list[dict]:
         i = min(int(pos), n - 1)
         return bounds[i] + (bounds[i + 1] - bounds[i]) * (pos - i)
 
+    # A very short span cannot give every character MIN_CHAR_DUR; share it out.
+    span = max(bounds[-1] - bounds[0], 0.0)
+    min_dur = min(MIN_CHAR_DUR, span / m) if m else 0.0
+
     out = []
     j = 0
+    prev_end = bounds[0]
     for ch in text:
         if ch == ' ':
             continue
-        out.append({"char": ch, "start": round(t_at(j), 3),
-                    "end": round(t_at(j + 1), 3)})
+        start = max(t_at(j), prev_end)
+        end = max(t_at(j + 1), start + min_dur)
+        out.append({"char": ch, "start": round(start, 3), "end": round(end, 3)})
+        prev_end = end
         j += 1
+
+    # Rounding can re-introduce a collision at millisecond resolution.
+    for a, b in zip(out, out[1:]):
+        if b["start"] < a["end"]:
+            b["start"] = a["end"]
+        if b["end"] <= b["start"]:
+            b["end"] = round(b["start"] + MIN_CHAR_DUR, 3)
+    if out and out[0]["end"] <= out[0]["start"]:
+        out[0]["end"] = round(out[0]["start"] + MIN_CHAR_DUR, 3)
     return out
 
 
