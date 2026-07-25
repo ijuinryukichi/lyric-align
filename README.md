@@ -17,14 +17,15 @@ It is built for two things most aligners handle poorly:
 
 ## Install
 
-Not on PyPI yet — install from the repository.
+Python 3.9–3.14. The core has **no dependencies at all**; the ASR extra pulls in
+`faster-whisper` (`ctranslate2`, not torch).
 
 **As a command-line tool** (recommended — puts `lyric-align` on your PATH, in its
 own isolated environment):
 
 ```bash
-uv tool install "lyric-align[asr] @ git+https://github.com/ijuinryukichi/lyric-align"
-# or: pipx install "lyric-align[asr] @ git+https://github.com/ijuinryukichi/lyric-align"
+uv tool install "lyric-align[asr]"
+# or: pipx install "lyric-align[asr]"
 
 lyric-align --version
 ```
@@ -35,9 +36,12 @@ vocal splitting; it pulls in torch, so leave it out until you need it.
 **As a library**, into your own environment:
 
 ```bash
-pip install "git+https://github.com/ijuinryukichi/lyric-align"        # core only, pure stdlib
-pip install "lyric-align[asr] @ git+https://github.com/ijuinryukichi/lyric-align"
+pip install lyric-align            # core only, pure stdlib — no dependencies
+pip install "lyric-align[asr]"     # + faster-whisper, to transcribe audio
 ```
+
+If you already have segments with word timings from somewhere else, the core
+install is enough: feed them in with `--segments` and nothing gets downloaded.
 
 ## Use
 
