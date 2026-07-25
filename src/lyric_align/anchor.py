@@ -38,11 +38,41 @@ late (signed mean +0.46 s / +0.21 s) because a sung phrase begins at its breath
 and attack, earlier than the first word an ASR will timestamp, so refining into
 the segment only adds lateness. See the README for both tables.
 
+Letting the unit size vary — choosing, per step, how many lines this segment
+should absorb instead of fixing it up front — was tried next and also measured
+worse. It is a tempting move because `pairing` is a rounded average: at 76 lines
+over 64 segments the true ratio is 1.19, so a fixed 1 leaves 27 lines unplaced
+and a fixed 2 straddles boundaries. Scoring `(k, segment)` jointly does raise
+placements (49/76 -> 66/76), and the first-line error barely moves. It is not
+free: a unit chosen to maximise similarity will happily straddle a *section*
+boundary, and such a unit needs only its tail to match. On the first track the
+last verse line scores 0.000 against the hook segment alone and 0.286 once the
+following hook line joins it — over the 0.25 threshold — so the breath split
+drags that verse line 13.3 s forward into the hook, and displaces the correctly
+placed hook line as collateral. Fixed pairing cannot do this at pairing=1: a
+one-line unit has no tail to match with. Variable pairing manufactures the very
+tail-match pathology that a dedicated veto (above) already failed to fix.
+
+Note the shape of that failure, because it also refutes the reason for trying:
+the earlier four attempts all changed *selection* (which segment a unit takes),
+so the plan was to change *consumption* instead and avoid the coupling. It does
+not avoid it. Consumption sets how fast the segment cursor advances relative to
+the line cursor, so it moves `idx` too — just one step removed — and the same
+gains-and-losses-in-adjacent-pairs behaviour returns. On the second track, where
+the ASR merges two lines consistently, deviating downward orphans the remainder
+onto the next segment and shifts every later unit's phase: within-0.5 s falls
+26/33 -> 18/33 and the 4x-repeated hook lands a repetition early. Restricting
+deviation to *upward* only looks safe, but only because pairing=2 with k<=2
+leaves it no room; allowing k<=3 breaks that track the same way (26/33 -> 13/33).
+
 Design philosophy: when a line cannot be confidently matched, we mark it
 unmatched rather than inventing a timestamp. Forced aligners always emit an
 answer and thus fail *silently* (e.g. drifting into the intro); we prefer honest
 gaps that a human — or a later interpolation pass — can fix. The same reasoning
 rejects the global matcher above: a visible gap beats a confident wrong time.
+The variable-pairing result is the sharpest case: its headline gain was 17 extra
+placements, and on the only subset where those extra placements can be checked,
+half were catastrophically wrong.
 """
 from __future__ import annotations
 

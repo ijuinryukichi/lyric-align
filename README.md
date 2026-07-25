@@ -284,6 +284,15 @@ granularity) reproduces this: **33/33 matched, median |err| 0.30 s**, 26/33
 within 0.5 s. Its mean of 0.94 s comes almost entirely from four outliers, all on
 the *same* line — see below.
 
+The ground truth on both tracks is marked per two-line pair, so these figures
+score the *first* line of each pair — 20 and 33 lines, not every line placed.
+Second lines have a weaker but free check: each must start inside its pair's
+window. The shipped configuration passes it (19/19 and 29/33, the four misses
+being the repeated hook already described), so the tables are not hiding a second
+failure mode — but the distinction matters as soon as a change is judged on how
+many lines it places, because placements land mostly on the unscored half. One
+did, and it is the last entry in [Known limits](#known-limits).
+
 ### A bigger ASR model is a trap unless the pairing follows
 
 Lines are matched in stanza units, and `pairing` says how many lyric lines make
@@ -517,6 +526,44 @@ above, "Through many dangers, toils and snares" was placed on the line
   add lateness. A sung phrase begins at its breath and attack, before the first
   word the ASR is willing to timestamp, so the segment boundary is the better
   estimate of onset.
+- **A varying unit size places more lines, and some of them badly.** `pairing`
+  is a rounded average, so it is wrong for part of any track: at 76 lines over 64
+  segments the true ratio is 1.19, and a fixed 1 leaves 27 lines unplaced while a
+  fixed 2 straddles boundaries. Choosing `(lines, segment)` jointly at each step
+  fixes the placement count and looks nearly free on the shipped metric:
+
+  | unit size | lines placed | mean \|err\| | within 0.5 s | worst | 2nd lines outside their GT window |
+  |---|---|---|---|---|---|
+  | fixed, from the ASR (shipped) | 49/76 | **0.31 s** | **15/20** | **0.8 s** | **0 of 16** |
+  | variable, k ≤ 2 | 66/76 | 0.42 s | 14/20 | 2.0 s | 2 of 18 |
+  | variable, k ≤ 2, only if it wins by 0.1 | 66/76 | 0.32 s | **15/20** | **0.8 s** | 1 of 18 (by 13.3 s) |
+
+  The last column is the point. The other columns score only the *first* line of
+  each two-line ground-truth pair, which is where the extra placements do *not*
+  land — so on the shipped metric the third row is 17 free placements. Checking
+  the second lines, which have a known window to fall inside, shows what was
+  bought: the last verse line scores 0.000 against the hook segment on its own
+  and 0.286 once the following hook line is absorbed into the same unit, clearing
+  the 0.25 threshold, so it is placed 13.3 s late inside the hook — and the hook
+  line that had been correct is displaced with it. A unit picked to maximise
+  similarity will straddle a section boundary, and such a unit needs only its
+  tail to match; fixed pairing=1 cannot do this because a one-line unit has no
+  tail. Of the two extra placements that can be checked, one is right and one is
+  13.3 s wrong.
+
+  On a track where the ASR merges two lines consistently the same move fails
+  from the other side: deviating downward orphans the remaining line onto the
+  next segment and shifts every later unit's phase, taking within-0.5 s from
+  26/33 to 18/33 and landing the 4×-repeated hook a repetition early. Allowing
+  only *upward* deviation appears to fix that, but only because pairing=2 with
+  k ≤ 2 leaves upward no room — permitting k ≤ 3 breaks the same track again
+  (26/33 → 13/33).
+
+  This also disposes of the reason for trying it. The four attempts above all
+  changed which segment a unit selects, so the plan here was to change how much
+  a unit *consumes* and dodge that coupling. Consumption sets how fast the
+  segment cursor advances relative to the line cursor, so it moves `idx` as
+  well — one step removed, same result.
 - **Slow, sustained singing is much harder than rap** — hymns, ballads and
   school songs stretch vowels until the ASR stops producing usable segments.
   Reach for `--no-vad` first (see the one-minute example); dense, consonant-rich
