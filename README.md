@@ -270,8 +270,12 @@ Others from the same catalogue: [六の巷](https://youtu.be/OIonX0bZjmI),
 
 Three is not thoroughness, it is the minimum that stops a change from looking
 good. With two tracks every proposal traded one against the other and the call
-came down to which track was weighted more; the third exists to take that
-discretion away.
+came down to which track was weighted more; the third was added to take that
+discretion away. It did, but not by arbitrating — it abstained. Seven of the
+eight candidates leave it *bit-identical*, because it has nothing broken for
+them to repair, and that turned out to be the more useful answer: the trade the
+two tracks appeared to show was never a trade. See
+[Known limits](#known-limits).
 
 Short lyric fragments from those tracks appear in the test fixtures. They are the
 author's own work and are **not** covered by this project's MIT license — see
@@ -380,6 +384,8 @@ On every case measured, `auto` matches or beats the old fixed 2:
 | 過ぎたるもの, `large-v3` | 76 / 64 | **1** | 0.50 s → **0.31 s** |
 | 黒砂, `medium` | 80 / 46 | 2 | identical |
 | 黒砂, `large-v3` | 80 / 46 | 2 | identical |
+| 誠の虎徹, `medium` | 76 / 36 | 2 | identical |
+| 誠の虎徹, `large-v3` | 76 / 32 | 2 | identical |
 | 過ぎたるもの, full mix (ASR collapsed) | 76 / 11 | 3 (capped) | no worse |
 
 It does **not** rescue the repeated-hook track: `large-v3` is behind `medium`
@@ -387,6 +393,14 @@ there at every pairing, because four identical hook lines carry no information
 about which repetition they are, whatever transcribes them. Better ASR fixes
 outliers caused by *garbled text*; it cannot fix outliers caused by *identical*
 text.
+
+The upgrade is not reliably an upgrade at all. On the third track `large-v3`
+returns *fewer* segments than `medium` (32 against 36) — so `auto` picks 2 for
+both, and the better model is much worse at it: mean 0.35 s → 1.35 s, zero
+outliers → one, worst case 29 s. Compared at each track's own `auto` pairing,
+`large-v3` wins on one of three (0.50 → 0.31 s) and loses on the other two
+(0.94 → 2.13 s and 0.35 → 1.35 s). Measure the upgrade per track rather than
+reaching for it by default.
 
 </details>
 
@@ -512,9 +526,25 @@ above, "Through many dangers, toils and snares" was placed on the line
 
 ## Known limits
 
-The sweeps quoted below were run on the first two tracks, before the third had a
-ground truth. They have not been re-run on it, so read "both tracks" in them
-literally — it means those two, not all three.
+Every sweep below has now been re-run on all three tracks. The two-track figures
+quoted in each table are unchanged; the third track did not overturn a single
+rejection. What it did instead is worth reading, because it is not what the
+two-track framing predicted:
+
+**Seven of the eight candidates do nothing at all on the third track** —
+bit-identical to what ships, at every value swept. That includes λ = 1.2 on the
+timing prior, a setting strong enough to collapse the first track from 19/20
+placed to 1/20. The third track has no misplacement to repair (worst 0.81 s,
+zero outliers), and every one of these candidates is a *repair* mechanism, so
+none of them has anything to fire on.
+
+That reframes the rejections. Two tracks made this look like a trade — a gain
+here paid for by a loss there, with the weighing left to whoever read the table.
+It is not a trade. The upside exists only on tracks that are already broken,
+while the downside — a greedy scan whose `idx` carries every decision into its
+neighbour — applies everywhere. The eighth candidate, word-start snapping, is
+the one exception to the inertness, and it is *worse* on the third track too
+(mean 0.35 s → 0.48 s, ≤0.5 s 29/38 → 20/38), making it worse on three of three.
 
 ### Heavily repeated refrains can land on the wrong repetition
 
@@ -603,13 +633,17 @@ that actually starts it (0.615 vs 0.304; concatenating both gives 0.644, and the
 right answer wins). Three independent fixes follow from that, and a fourth from
 how a global character aligner gets sub-segment resolution:
 
-| candidate selection | 過ぎたるもの mean / worst / ≤0.5 s | 黒砂 matched / mean / ≤0.5 s |
-|---|---|---|
-| forward scan (shipped) | **0.50 s** / 3.6 s / **14/20** | **33/33** / **0.94 s** / **26/33** |
-| span up to 2 segments | 0.34 s / **0.7 s** / 15/20 | 29/33 / 2.13 s / 23/33 |
-| score the unit's opening, not the whole unit | 0.34 s / **0.7 s** / 15/20 | 31/33 / 1.22 s / 23/33 |
-| veto candidates matching only the unit's tail | 0.33 s / **0.7 s** / 14/20 | 32/33 / 1.74 s / 19/33 |
-| ↑ but only on lines that never repeat | 0.34 s / **0.7 s** / 15/20 | 32/33 / 1.00 s / 25/33 |
+| candidate selection | 過ぎたるもの mean / worst / ≤0.5 s | 黒砂 matched / mean / ≤0.5 s | 誠の虎徹 |
+|---|---|---|---|
+| forward scan (shipped) | **0.50 s** / 3.6 s / **14/20** | **33/33** / **0.94 s** / **26/33** | 36/38 / 0.35 s / 29/38 |
+| span up to 2 segments | 0.34 s / **0.7 s** / 15/20 | 29/33 / 2.13 s / 23/33 | *identical* |
+| score the unit's opening, not the whole unit | 0.34 s / **0.7 s** / 15/20 | 31/33 / 1.22 s / 23/33 | *identical* |
+| veto candidates matching only the unit's tail | 0.33 s / **0.7 s** / 14/20 | 32/33 / 1.74 s / 19/33 | *identical* |
+| ↑ but only on lines that never repeat | 0.34 s / **0.7 s** / 15/20 | 32/33 / 1.00 s / 25/33 | *identical* |
+
+*identical* is literal: on the third track every one of these produces the same
+placements as the shipped scan, at every value swept. There is no outlier there
+for them to move.
 
 Gains and losses arrive in adjacent pairs: the last row above fixes
 2.30 s → 0.02 s at 2:20 on the second track and breaks 0.32 s → 3.70 s at 2:26,
@@ -621,9 +655,10 @@ four unrelated interventions all land on roughly the same total.
 The fourth is worth naming separately because it is what Vilm does differently
 ([above](#against-vilm-the-one-other-maintained-tool-here)). Taking each line's start from the word
 its first character lands on — the sub-segment resolution a global character
-aligner buys — measured *worse on both tracks* (mean 0.50 → 0.79 s and
-0.94 → 1.26 s; ≤0.5 s 14/20 → 9/20 and 26/33 → 20/33). Placements are already
-late (signed mean +0.46 s and +0.21 s), and refining into the segment can only
+aligner buys — measured *worse on all three tracks* (mean 0.50 → 0.79 s,
+0.94 → 1.26 s and 0.35 → 0.48 s; ≤0.5 s 14/20 → 9/20, 26/33 → 20/33 and
+29/38 → 20/38). Placements are already
+late (signed mean +0.46 s, +0.21 s and +0.11 s), and refining into the segment can only
 add lateness. A sung phrase begins at its breath and attack, before the first
 word the ASR is willing to timestamp, so the segment boundary is the better
 estimate of onset.
@@ -675,6 +710,26 @@ changed which segment a unit selects, so the plan here was to change how much
 a unit *consumes* and dodge that coupling. Consumption sets how fast the
 segment cursor advances relative to the line cursor, so it moves `idx` as
 well — one step removed, same result.
+
+The third track produced the one configuration in the whole sweep that looks
+adoptable, and it is worth showing why it is not — because the tell is the
+opposite of the one above:
+
+| third track, `large-v3` | lines scored | mean \|err\| | worst | mean excluding the outlier |
+|---|---|---|---|---|
+| fixed, from the ASR (shipped) | 27/38 | 1.35 s | **29.0 s** | 0.290 s |
+| downward deviation, k ≤ 2 | 27/38 | **0.28 s** | **0.7 s** | 0.284 s |
+
+A 4.8× better mean, same number of lines scored. But the last column moved by
+0.006 s — a thirtieth of that track's ground-truth resolution. Nothing got more
+accurate. One line that had been placed 29 s wrong became an honest miss, and a
+different line came back from a miss at +0.12 s, so the count held while the
+mean lost its one large term. Trading a wrong answer for "I don't know" is the
+behaviour this tool wants, but it is not an accuracy gain — and it appears only
+under `large-v3`, which is not what this track ships on; at `medium` the variant
+is identical to fixed. Above, an unscored half hid a cost. Here a *shrinking*
+scored population manufactured a gain. Read the count and the outlier-free body
+before reading the mean.
 
 </details>
 
