@@ -1,7 +1,12 @@
 import json
+import sys
+import types
 from pathlib import Path
 
+import pytest
+
 from lyric_align.cli import main, read_lyrics
+from lyric_align.model import Segment
 
 FIX = Path(__file__).parent / "fixtures" / "segments_sample.json"
 
@@ -98,3 +103,112 @@ def test_cli_rejects_a_nonsense_pairing(tmp_path, capsys):
         main([str(lyrics), "--segments", str(FIX), "--pairing", "two",
               "-o", str(tmp_path / "o.json")])
     capsys.readouterr()
+
+
+def fake_asr(monkeypatch, segments):
+    """Stand in for faster-whisper so the CLI's ASR path is testable offline.
+
+    The CLI does `from .asr import transcribe`, so pre-seeding sys.modules is
+    enough — nothing heavy is ever imported.
+    """
+    mod = types.ModuleType("lyric_align.asr")
+    mod.transcribe = lambda *a, **k: list(segments)
+    monkeypatch.setitem(sys.modules, "lyric_align.asr", mod)
+
+
+def fixture_segments():
+    return [Segment.from_dict(d) for d in json.loads(FIX.read_text())]
+
+
+LYRICS_3 = "あかねさす紫野ゆき\n標野ゆき野守は見ずや\n君が袖振る\n"
+
+
+def test_cli_dumped_segments_reproduce_the_same_alignment(tmp_path, monkeypatch):
+    # The whole point of the flag: a second run off the dump must land exactly
+    # where the transcribing run did, or the cache is not a cache.
+    fake_asr(monkeypatch, fixture_segments())
+    lyrics = write_lyrics(tmp_path, LYRICS_3)
+    audio = tmp_path / "song.wav"
+    audio.write_bytes(b"")
+    dumped = tmp_path / "segs.json"
+
+    first = tmp_path / "first.lrc"
+    rc = main([str(audio), str(lyrics), "--pairing", "1", "-q",
+               "--dump-segments", str(dumped), "-o", str(first)])
+    assert rc == 0
+    assert dumped.exists()
+
+    second = tmp_path / "second.lrc"
+    rc = main([str(lyrics), "--segments", str(dumped), "--pairing", "1", "-q",
+               "-o", str(second)])
+    assert rc == 0
+    assert second.read_text() == first.read_text()
+
+
+def test_cli_dumps_before_aligning_so_a_crash_cannot_cost_the_audio_half(
+        tmp_path, monkeypatch):
+    # The expensive half is the transcription. If the run dies in the cheap
+    # half, the dump must already be on disk — that is the whole ordering
+    # claim, so break the cheap half on purpose and check the file survives.
+    fake_asr(monkeypatch, fixture_segments())
+
+    def explode(*a, **k):
+        raise RuntimeError("alignment blew up")
+
+    monkeypatch.setattr("lyric_align.cli.align", explode)
+    lyrics = write_lyrics(tmp_path, LYRICS_3)
+    audio = tmp_path / "song.wav"
+    audio.write_bytes(b"")
+    dumped = tmp_path / "segs.json"
+
+    with pytest.raises(RuntimeError):
+        main([str(audio), str(lyrics), "--pairing", "1", "-q", "-f", "json",
+              "--dump-segments", str(dumped)])
+
+    assert [s["text"] for s in json.loads(dumped.read_text())] == \
+        [s.text for s in fixture_segments()]
+
+
+def test_cli_dumped_segments_keep_word_timings(tmp_path, monkeypatch):
+    # `-f json` emits aligned lines, which carry no word timings — the dump has
+    # to, or karaoke output degrades on the second run.
+    fake_asr(monkeypatch, fixture_segments())
+    lyrics = write_lyrics(tmp_path, LYRICS_3)
+    audio = tmp_path / "song.wav"
+    audio.write_bytes(b"")
+    dumped = tmp_path / "segs.json"
+    main([str(audio), str(lyrics), "--pairing", "1", "-q", "-f", "json",
+          "--dump-segments", str(dumped)])
+
+    got = json.loads(dumped.read_text())
+    assert got[0]["words"][0] == {"start": 0.5, "end": 0.9, "word": "あか"}
+    assert all(s["words"] for s in got)
+
+
+def test_dumped_segments_stay_one_line_per_segment(tmp_path, monkeypatch):
+    # Word timings nested under a plain indent run to hundreds of lines per
+    # song. The brackets are written by hand to keep that readable, so this
+    # pins both halves: still valid JSON, still one line you can eyeball.
+    fake_asr(monkeypatch, fixture_segments())
+    lyrics = write_lyrics(tmp_path, LYRICS_3)
+    audio = tmp_path / "song.wav"
+    audio.write_bytes(b"")
+    dumped = tmp_path / "segs.json"
+    main([str(audio), str(lyrics), "--pairing", "1", "-q", "-f", "json",
+          "--dump-segments", str(dumped)])
+
+    text = dumped.read_text()
+    assert json.loads(text)
+    assert text.splitlines()[0] == "["
+    assert text.splitlines()[-1] == "]"
+    assert len(text.splitlines()) == len(fixture_segments()) + 2
+
+
+def test_cli_dump_segments_is_a_noop_when_segments_were_given(tmp_path, capsys):
+    lyrics = write_lyrics(tmp_path, LYRICS_3)
+    dumped = tmp_path / "segs.json"
+    rc = main([str(lyrics), "--segments", str(FIX), "--pairing", "1",
+               "-f", "json", "--dump-segments", str(dumped)])
+    assert rc == 0
+    assert not dumped.exists()
+    assert "--dump-segments ignored" in capsys.readouterr().err

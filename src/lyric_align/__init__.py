@@ -9,7 +9,7 @@ from .anchor import align, auto_pairing, interpolate_gaps
 from .model import AlignedLine, Segment, Word
 from .normalize import normalize, similarity
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "align", "auto_pairing", "interpolate_gaps",
