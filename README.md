@@ -104,6 +104,10 @@ lyric-align song.wav lyrics.txt --separate -o out.lrc
 # already have Whisper segments? skip ASR
 lyric-align --segments segments.json lyrics.txt -f srt
 
+# keep the transcription, so fixing a typo doesn't re-run Whisper (or Demucs)
+lyric-align song.wav lyrics.txt --separate --dump-segments segments.json -o out.lrc
+lyric-align --segments segments.json lyrics.txt -o out.lrc        # seconds, not minutes
+
 # per-character karaoke ASS (\k tags)
 lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
 ```
@@ -112,7 +116,9 @@ lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
 and section markers (`[Verse 1]`, `[Hook]`) are skipped, so a pasted lyric sheet
 works as-is. `segments.json` is a list of
 `{"start", "end", "text", "words": [{"start","end","word"}]}` — the shape any
-Whisper flavor produces.
+Whisper flavor produces, and the shape `--dump-segments` writes. The dump lands
+*before* alignment, so a run that dies on the cheap half still leaves the
+expensive half on disk.
 
 ## Output: pick the format your next tool eats
 
@@ -241,7 +247,9 @@ filled (they stay flagged as guessed).
 ## How it works
 
 1. **(optional) vocal separation** — Demucs, if installed (`[separate]`).
-2. **ASR** — faster-whisper with word timestamps (`[asr]`), or bring your own segments.
+2. **ASR** — faster-whisper with word timestamps (`[asr]`), or bring your own
+   segments. `--dump-segments` writes steps 1–2 out, so iterating on the lyrics
+   never pays for them twice.
 3. **anchor** — each known lyric line/stanza is matched to a segment by
    character-level similarity, scanning forward monotonically so repeated
    choruses consume segments in order.

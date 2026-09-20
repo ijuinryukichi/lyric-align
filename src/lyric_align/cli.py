@@ -2,6 +2,7 @@
 
     lyric-align AUDIO LYRICS.txt -o out.lrc          # transcribe + align
     lyric-align AUDIO LYRICS.txt --separate -o o.lrc  # split vocals first (better)
+    lyric-align AUDIO LYRICS.txt --dump-segments segs.json -o o.lrc  # keep the ASR
     lyric-align --segments segs.json LYRICS.txt -f ass --karaoke
     lyric-align --from-labels fixed.labels.txt -f lrc  # convert corrected labels
 
@@ -40,6 +41,17 @@ def load_segments(path: Path) -> list[Segment]:
     return [Segment.from_dict(d) for d in json.loads(path.read_text())]
 
 
+def dump_segments(segments: list[Segment]) -> str:
+    """The mirror of `load_segments`, one segment per line.
+
+    Plain `indent=` would put every word timing on three lines of its own —
+    hundreds of lines for a song. This stays a file you can open and read.
+    """
+    body = ",\n".join(" " + json.dumps(seg.to_dict(), ensure_ascii=False)
+                      for seg in segments)
+    return f"[\n{body}\n]\n"
+
+
 DESCRIPTION = """\
 Place known lyrics on an audio timeline.
 
@@ -55,6 +67,7 @@ examples:
   lyric-align song.wav lyrics.txt -o out.lrc              transcribe and align
   lyric-align song.wav lyrics.txt --separate -o out.lrc   split vocals first (better on a mix)
   lyric-align song.mp3 lyrics.txt --language en --no-vad  English, sung slowly
+  lyric-align song.wav lyrics.txt --dump-segments segs.json -o out.lrc   keep the ASR
   lyric-align --segments segs.json lyrics.txt -f ass --karaoke
   lyric-align --from-labels fixed.labels.txt -f lrc   convert labels you corrected
 
@@ -99,6 +112,11 @@ def build_parser() -> argparse.ArgumentParser:
     asr = p.add_argument_group(
         "transcription", "ignored when --segments is given")
     asr.add_argument("--segments", help="pre-computed segments JSON (skip ASR entirely)")
+    asr.add_argument("--dump-segments", metavar="FILE",
+                     help="write the transcription to FILE before aligning, in the "
+                          "shape --segments reads back. Fixing a typo in the lyrics "
+                          "then costs seconds instead of another Demucs + Whisper "
+                          "pass, and the file survives a failed alignment")
     asr.add_argument("--separate", action="store_true",
                      help="split the vocal stem with Demucs first (needs the [separate] "
                           "extra). Slow, cached, and markedly more accurate on a full mix")
@@ -201,6 +219,11 @@ def main(argv=None) -> int:
     if args.segments:
         segments = load_segments(Path(args.segments))
         log(f"segments: {len(segments)} (from {args.segments})")
+        if args.dump_segments:
+            # Nothing was transcribed, so there is nothing new to write. Say so
+            # rather than copying the input file under a second name.
+            log(f"note: --dump-segments ignored — the segments came from "
+                f"{args.segments}, nothing was transcribed")
     elif args.audio:
         audio = args.audio
         try:
@@ -232,6 +255,12 @@ def main(argv=None) -> int:
                   "quiet or too reverberant — try normalizing its loudness "
                   "(ffmpeg -af loudnorm) or a larger --model.", file=sys.stderr)
             return 1
+        if args.dump_segments:
+            # Write before aligning, not after: the expensive half is done and
+            # the cheap half is the one you re-run after editing the lyrics.
+            Path(args.dump_segments).write_text(dump_segments(segments))
+            log(f"wrote {args.dump_segments} — reuse it with "
+                f"--segments {args.dump_segments} (no ASR, no Demucs)")
     else:
         print("error: provide AUDIO or --segments", file=sys.stderr)
         return 2

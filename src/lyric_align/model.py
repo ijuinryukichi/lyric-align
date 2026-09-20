@@ -10,6 +10,9 @@ class Word:
     end: float
     word: str
 
+    def to_dict(self) -> dict:
+        return {"start": self.start, "end": self.end, "word": self.word}
+
 
 @dataclass
 class Segment:
@@ -28,6 +31,16 @@ class Segment:
             words=[Word(float(w["start"]), float(w["end"]), w["word"])
                    for w in d.get("words", []) if w.get("start") is not None],
         )
+
+    def to_dict(self) -> dict:
+        """The mirror of `from_dict` — what `--dump-segments` writes.
+
+        Round-trips: `Segment.from_dict(seg.to_dict()) == seg`. `words` is
+        always present, even when empty, because it is the field that makes a
+        dumped file worth keeping.
+        """
+        return {"start": self.start, "end": self.end, "text": self.text,
+                "words": [w.to_dict() for w in self.words]}
 
 
 @dataclass
