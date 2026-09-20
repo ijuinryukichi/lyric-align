@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lyric-align"
-version = "0.4.0"
+version = "0.4.1"
 description = "Place known lyrics on an audio timeline — CJK-first, built for sung vocals and rap."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
-authors = [{ name = "ijuinryukichi" }]
+authors = [{ name = "TORYU" }]
 keywords = [
   "lyrics", "lyrics-alignment", "forced-alignment", "karaoke", "subtitle",
   "lrc", "srt", "ass", "ttml", "japanese", "chinese", "cjk", "whisper",
@@ -52,6 +52,8 @@ Homepage = "https://github.com/ijuinryukichi/lyric-align"
 Source = "https://github.com/ijuinryukichi/lyric-align"
 Issues = "https://github.com/ijuinryukichi/lyric-align/issues"
 Changelog = "https://github.com/ijuinryukichi/lyric-align/releases"
+# Who wrote it. This tool came out of making TORYU's music videos.
+Author = "https://toryu.tokyo"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lyric_align"]

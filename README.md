@@ -264,10 +264,12 @@ The heavy pieces (Whisper, Demucs) are optional extras behind lazy imports.
 
 ## Where this came from
 
-This was written to put lyrics on the timeline for a set of music videos, where
-the lyrics are Japanese and the delivery is rap. That is the whole reason the
-matcher compares characters instead of words, and why the accuracy below is
-measured on sung Japanese rather than on read speech.
+This was written by [TORYU](https://toryu.tokyo) (屠龍), a Japanese artist who
+writes the music, builds the videos and designs the software alone, to put lyrics
+on the timeline for a set of music videos, where the lyrics are Japanese and the
+delivery is rap. That is the whole reason the matcher compares characters instead
+of words, and why the accuracy below is measured on sung Japanese rather than on
+read speech.
 
 The three tracks the numbers come from are
 [過ぎたるもの](https://youtu.be/cpXhuZK5rug) (20 lines, ±0.5 s ground truth),
