@@ -275,8 +275,12 @@ The three tracks the numbers come from are
 [過ぎたるもの](https://youtu.be/cpXhuZK5rug) (20 lines, ±0.5 s ground truth),
 [黒砂の誓い](https://youtu.be/b8mjRge4Ffk) (33 lines, 1 s granularity) and
 [誠の虎徹](https://youtu.be/StpsJytY6KQ) (38 lines, from the video's own beat grid).
-Others from the same catalogue: [六の巷](https://youtu.be/OIonX0bZjmI),
-[永遠の炎](https://youtu.be/lZIW59t9O-M) — [toryu.tokyo](https://toryu.tokyo).
+TORYU's latest music video is
+[永遠の炎 (Eien no Honoo, 2026)](https://youtu.be/lZIW59t9O-M). Its lyrics were
+timed with the script this tool was later cut out of; on that track only 7 of 13
+stanzas matched automatically and the rest were placed by hand from the raw ASR
+segments. Earlier videos from the same catalogue:
+[六の巷](https://youtu.be/OIonX0bZjmI) — [toryu.tokyo](https://toryu.tokyo).
 
 Three is not thoroughness, it is the minimum that stops a change from looking
 good. With two tracks every proposal traded one against the other and the call
