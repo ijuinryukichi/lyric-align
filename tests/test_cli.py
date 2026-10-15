@@ -32,8 +32,31 @@ def test_read_lyrics_keeps_bracketed_lyric_content(tmp_path):
     assert read_lyrics(p) == ["「かかれぃ！」と鬼が吼え"]
 
 
+@pytest.mark.parametrize("direction", [
+    "[Intro] (a probing spade thuds into the earth, soil is drawn up, then a lone guzheng note)",
+    "[Verse 1] (sparse guzheng and low cello, still and deep)",
+    "[Final Chorus] (full arrangement, choir, biggest)",
+    "[Outro] (the guzheng fades, a pot simmers, river ambience)",
+    "  [前奏] （古筝独奏，渐强）  ",
+    "[Bridge](slower) (xun flute alone)",
+])
+def test_read_lyrics_skips_section_arrangement_directions(tmp_path, direction):
+    p = write_lyrics(tmp_path, f"{direction}\n往下一铲\n")
+    assert read_lyrics(p) == ["往下一铲"]
+
+
+@pytest.mark.parametrize("line", [
+    "往下一铲（往下一铲）",
+    "[Chorus] 往下一铲",
+    "[Chorus] (softly) 往下一铲",
+    "[Verse 1] (unfinished direction",
+])
+def test_read_lyrics_preserves_text_outside_arrangement_directions(tmp_path, line):
+    assert read_lyrics(write_lyrics(tmp_path, line)) == [line]
+
+
 def test_cli_segments_to_lrc(tmp_path, capsys):
-    lyrics = write_lyrics(tmp_path, "あかねさす紫野ゆき\n標野ゆき野守は見ずや\n君が袖振る\n")
+    lyrics = write_lyrics(tmp_path, "[Intro] (soft strings)\nあかねさす紫野ゆき\n標野ゆき野守は見ずや\n君が袖振る\n")
     out = tmp_path / "out.lrc"
     rc = main([str(lyrics), "--segments", str(FIX), "--pairing", "1", "-o", str(out)])
     assert rc == 0

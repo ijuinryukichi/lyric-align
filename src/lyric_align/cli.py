@@ -24,14 +24,18 @@ from .model import Segment
 from .normalize import CJK_THRESHOLD, LATIN_THRESHOLD, default_threshold
 
 SECTION_MARKER = re.compile(r"^[\[(](?:[^\[\]()]{0,40})[\])]$")
+SECTION_DIRECTION = re.compile(
+    r"\[[^\[\]()]{1,40}\](?:\s*(?:\([^()]*\)|（[^（）]*）))+"
+)
 
 
 def read_lyrics(path: Path) -> list[str]:
-    """One lyric line per line; drop blanks, section markers and # comments."""
+    """Drop blanks, section markers (with arrangement notes), and # comments."""
     out = []
     for raw in path.read_text().splitlines():
         line = raw.strip()
-        if not line or line.startswith("#") or SECTION_MARKER.match(line):
+        if (not line or line.startswith("#") or SECTION_MARKER.match(line)
+                or SECTION_DIRECTION.fullmatch(line)):
             continue
         out.append(line)
     return out
@@ -72,8 +76,8 @@ examples:
   lyric-align --from-labels fixed.labels.txt -f lrc   convert labels you corrected
 
 LYRICS is plain text, one lyric line per line. Blank lines, # comments and
-section markers ([Verse 1], [Hook]) are skipped, so a pasted lyric sheet works
-as-is.
+section markers ([Verse 1], [Hook]) are skipped, including markers followed
+only by parenthesized arrangement notes, e.g. [Intro] (soft strings).
 
 To fix a timing by hand, write '-f aud', drag the line over the waveform in
 Audacity, export the labels, and read them back with --from-labels.
