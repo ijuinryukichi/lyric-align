@@ -113,8 +113,10 @@ lyric-align song.wav lyrics.txt -f ass --karaoke -o out.ass
 ```
 
 `lyrics.txt` is plain text, one lyric line per line. Blank lines, `# comments`
-and section markers (`[Verse 1]`, `[Hook]`) are skipped, so a pasted lyric sheet
-works as-is. `segments.json` is a list of
+and section markers (`[Verse 1]`, `[Hook]`) are skipped. A marker followed only
+by arrangement notes in parentheses is also skipped, e.g. `[Intro] (soft strings)`
+or `[前奏] （古筝独奏）`. Lyrics containing parentheses, or text after a marker
+such as `[Chorus] Sing along`, are kept. `segments.json` is a list of
 `{"start", "end", "text", "words": [{"start","end","word"}]}` — the shape any
 Whisper flavor produces, and the shape `--dump-segments` writes. The dump lands
 *before* alignment, so a run that dies on the cheap half still leaves the
